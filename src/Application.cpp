@@ -26,15 +26,22 @@
 
 #include "Application.hpp"
 
+/* Standard inclusions. */
+#include <array>
+#include <cmath>
+
 /* Local inclusions. */
 #include "PlatformSpecific/Desktop/Dialog/Message.hpp"
 #include "Animations/Sequence.hpp"
+#include "Graphics/Material/PBRResource.hpp"
 #include "Graphics/Geometry/ResourceGenerator.hpp"
 #include "Graphics/Renderable/SkyBoxResource.hpp"
 #include "Graphics/Renderable/BasicGroundResource.hpp"
 #include "Graphics/Renderable/SimpleMeshResource.hpp"
 #include "Graphics/TextureResource/Texture2D.hpp"
 #include "Scenes/Component/Camera.hpp"
+#include "Scenes/Toolkit.hpp"
+#include "Audio/MusicResource.hpp"
 
 namespace ProjetNihil
 {
@@ -88,26 +95,28 @@ namespace ProjetNihil
 		/* NOTE: Get the default skybox. */
 		const auto defaultSkyBox = resources.container< Renderable::SkyBoxResource >()->getDefaultResource();
 
-		/* NOTE: Get the default scene area (ground). */
-		//const auto defaultSceneArea = resources.container< Renderable::BasicGroundResource >()->getDefaultResource();
-
-		/* NOTE: Create a ground modified with the perlin noise algorithm. */
+		/* NOTE: Create a ground with a polished precious stone material. */
 		const auto defaultSceneArea = resources.container< Renderable::BasicGroundResource >()
 			->getOrCreateResource("DemoBasicGround", [&resources] (Renderable::BasicGroundResource & newResource) {
-				const auto materialResource = resources.container< Material::BasicResource >()
-					->getOrCreateResource("DemoBasicGroundMaterial", [] (Material::BasicResource & newMaterial) {
-						return newMaterial.load(
-							{0.61F, 0.55F, 0.38F, 1.0F},
-							{0.33F, 0.66F, 0.0F, 1.0F},
-							32.0F
-						);
+				const auto materialResource = resources.container< Material::PBRResource >()
+					->getOrCreateResource("DemoBasicGroundMaterial", [] (auto & newMaterial) {
+						/* Polished precious stone (dark sapphire/obsidian). */
+						newMaterial.setAlbedoComponent({0.005F, 0.005F, 0.015F, 1.0F});
+						newMaterial.setRoughnessComponent(0.15F);
+						newMaterial.setMetalnessComponent(0.0F);
+						newMaterial.setReflectionComponentFromEnvironmentCubemap(0.6F);
+						newMaterial.setSpecularComponent(2.0F, {0.7F, 0.8F, 1.0F, 1.0F});
+						newMaterial.setIridescenceComponent(0.5F, 1.8F, 150.0F, 450.0F);
+						newMaterial.setClearCoatComponent(1.0F, 0.01F);
+
+						return newMaterial.setManualLoadSuccess(true);
 					});
 
-				return newResource.loadDiamondSquare(
+				return newResource.loadPerlinNoise(
 					Physics::SI::kilometers(8.196F),
-					1024,
+					512,
 					materialResource,
-					{512.0F, 0.5F}
+					{5.0F, 150.0F}
 				);
 			});
 
@@ -128,7 +137,6 @@ namespace ProjetNihil
 
 			{
 				constexpr auto segmentCount{16U};
-				constexpr auto radius{512.0F};
 				constexpr float yMax = -70.0F;
 				constexpr float yMin = -350.0F;
 				constexpr float yCenter = (yMax + yMin) / 2.0F;
@@ -139,6 +147,7 @@ namespace ProjetNihil
 
 				for ( uint32_t index = 0; index <= segmentCount; ++index )
 				{
+					constexpr auto radius{512.0F};
 					const auto timePoint = static_cast< float >(index) / static_cast< float >(segmentCount);
 
 					const auto currentAngle = timePoint * (2.0F * std::numbers::pi_v< float >);
@@ -160,7 +169,9 @@ namespace ProjetNihil
 			m_cameraNode = sceneNode;
 		}
 
-		/* NOTE: Create a directional light. */
+		/* NOTE: Use the Toolkit to build the scene lighting and decorations. */
+		Toolkit toolkit{settings, resources, newScene};
+
 		if ( m_useStaticLighting )
 		{
 			TraceInfo{ClassId} << "Using static lighting ...";
@@ -174,34 +185,102 @@ namespace ProjetNihil
 		{
 			TraceInfo{ClassId} << "Using dynamic lighting ...";
 
-			const auto sceneNode = newScene->root()->createChild("TheSunNode", Math::CartesianFrame{-750.0F, -1000.0F, 250.0F});
+			/* Sun-light with shadow mapping. */
+			toolkit.setCursor(-750.0F, -1000.0F, 250.0F);
+			toolkit.generateDirectionalLight("TheSun", {1.0F, 0.95F, 0.85F, 1.0F}, 1.2F, 4096, 500.0F);
 
-			sceneNode->componentBuilder< Component::DirectionalLight >("TheSun")
-				.setup([] (auto & component) {
-					component.setColor(White);
-					component.setIntensity(1.2F);
-				}).build();
+			/* Warm amber point light orbiting clockwise. */
+			toolkit.setCursor(200.0F, -300.0F, 200.0F);
+			{
+				const auto warmLight = toolkit.generatePointLight< Node >("WarmLight", {1.0F, 0.7F, 0.3F, 1.0F}, 600.0F, 0.8F, 1024);
+				const auto warmLightNode = warmLight.entity();
+
+				constexpr auto segmentCount{32U};
+
+				const auto interpolation = std::make_shared< Animations::Sequence >(20'000);
+
+				for ( uint32_t index = 0; index <= segmentCount; ++index )
+				{
+					constexpr auto orbitHeight{-250.0F};
+					constexpr auto orbitRadius{300.0F};
+					const auto timePoint = static_cast< float >(index) / static_cast< float >(segmentCount);
+					const auto angle = timePoint * (2.0F * std::numbers::pi_v< float >);
+
+					const Math::Vector< 3, float > position{
+						orbitRadius * std::cos(angle),
+						orbitHeight + 50.0F * std::sin(angle * 3.0F),
+						orbitRadius * std::sin(angle)
+					};
+
+					interpolation->addKeyFrame(timePoint, Variant{position}, Math::InterpolationType::Linear);
+				}
+
+				interpolation->play();
+
+				warmLightNode->addAnimation(Node::WorldPosition, interpolation);
+			}
+
+			/* Cool blue point light orbiting counter-clockwise. */
+			toolkit.setCursor(-200.0F, -250.0F, -200.0F);
+			{
+				const auto coolLight = toolkit.generatePointLight< Node >("CoolLight", {0.3F, 0.5F, 1.0F, 1.0F}, 600.0F, 0.6F, 1024);
+				const auto coolLightNode = coolLight.entity();
+
+				constexpr auto segmentCount{32U};
+
+				const auto interpolation = std::make_shared< Animations::Sequence >(25'000);
+
+				for ( uint32_t index = 0; index <= segmentCount; ++index )
+				{
+					constexpr auto orbitHeight{-200.0F};
+					constexpr auto orbitRadius{350.0F};
+					const auto timePoint = static_cast< float >(index) / static_cast< float >(segmentCount);
+					const auto angle = -timePoint * (2.0F * std::numbers::pi_v< float >);
+
+					const Math::Vector< 3, float > position{
+						orbitRadius * std::cos(angle),
+						orbitHeight + 40.0F * std::sin(angle * 2.0F),
+						orbitRadius * std::sin(angle)
+					};
+
+					interpolation->addKeyFrame(timePoint, Variant{position}, Math::InterpolationType::Linear);
+				}
+
+				interpolation->play();
+
+				coolLightNode->addAnimation(Node::WorldPosition, interpolation);
+			}
+
+			/* Spotlight illuminating the center stage from above. */
+			toolkit.setCursor(0.0F, -500.0F, 0.0F);
+			toolkit.generateSpotLight("CenterSpot", {0.0F, -75.0F, 0.0F}, 25.0F, 35.0F, White, 800.0F, 1.5F, 2048);
 
 			newScene->lightSet().enable();
 		}
 
-		/* NOTE: Create a cube. */
+		/* NOTE: Create a cube with a porcelain material. */
 		{
 			const auto cubeResource = resources.container< Renderable::SimpleMeshResource >()
 				->getOrCreateResource("TheCubeMesh", [&resources] (Renderable::SimpleMeshResource & newMesh) {
-					const Geometry::ResourceGenerator generator{resources, Geometry::EnableNormal | Geometry::EnablePrimaryTextureCoordinates};
+					const Geometry::ResourceGenerator generator{resources, Geometry::EnableTangentSpace | Geometry::EnablePrimaryTextureCoordinates};
 
-					const auto materialResource = resources.container< Material::BasicResource >()
-						->getOrCreateResource("TheCubeMaterial", [&resources] (Material::BasicResource & newMaterial) {
-							newMaterial.setTexture(resources.container< TextureResource::Texture2D >()->getDefaultResource());
-							newMaterial.setSpecularComponent(White, 128.0F);
+					const auto materialResource = resources.container< Material::PBRResource >()
+						->getOrCreateResource("TheCubeMaterial", [] (auto & newMaterial) {
+							/* Glazed porcelain. */
+							newMaterial.setAlbedoComponent({0.95F, 0.93F, 0.88F, 1.0F});
+							newMaterial.setRoughnessComponent(0.08F);
+							newMaterial.setMetalnessComponent(0.0F);
+							newMaterial.setReflectionComponentFromEnvironmentCubemap(1.0F);
+							newMaterial.setClearCoatComponent(1.0F, 0.02F);
+							newMaterial.setSubsurfaceComponent(0.4F, 1.0F, {0.95F, 0.90F, 0.85F, 1.0F});
+							newMaterial.setSpecularComponent(1.5F, {1.0F, 0.98F, 0.95F, 1.0F});
 
 							return newMaterial.setManualLoadSuccess(true);
 						});
 
 					return newMesh.load(
 						generator.cube(100.0F, "TheCubeGeometry"),
-						materialResource//resources.container< Material::BasicResource >()->getDefaultResource()
+						materialResource
 					);
 			   });
 
@@ -215,6 +294,102 @@ namespace ProjetNihil
 			m_cubeNode = sceneNode;
 		}
 
+		/* NOTE: Create decorative spheres using the Toolkit (showcases the scene builder). */
+		{
+			/* Gold sphere - polished brushed metal. */
+			const auto goldMaterial = resources.container< Material::PBRResource >()
+				->getOrCreateResource("GoldMaterial", [] (auto & mat) {
+					mat.setAlbedoComponent({1.0F, 0.86F, 0.57F, 1.0F});
+					mat.setRoughnessComponent(0.2F);
+					mat.setMetalnessComponent(1.0F);
+					mat.setReflectionComponentFromEnvironmentCubemap(1.0F);
+					mat.setAnisotropyComponent(0.3F);
+					return mat.setManualLoadSuccess(true);
+				});
+
+			toolkit.setCursor(200.0F, -75.0F, 200.0F);
+			m_goldSphere = toolkit.generateSphereInstance("GoldSphere", 35.0F, goldMaterial, false, true, 64).entity();
+
+			/* Chrome sphere - perfect mirror. */
+			const auto chromeMaterial = resources.container< Material::PBRResource >()
+				->getOrCreateResource("ChromeMaterial", [] (auto & mat) {
+					mat.setAlbedoComponent({0.95F, 0.95F, 0.95F, 1.0F});
+					mat.setRoughnessComponent(0.02F);
+					mat.setMetalnessComponent(1.0F);
+					mat.setReflectionComponentFromEnvironmentCubemap(1.0F);
+					return mat.setManualLoadSuccess(true);
+				});
+
+			toolkit.setCursor(-200.0F, -75.0F, 200.0F);
+			m_chromeSphere = toolkit.generateSphereInstance("ChromeSphere", 35.0F, chromeMaterial, false, true, 64).entity();
+
+			/* Ruby sphere - translucent gemstone with subsurface scattering. */
+			const auto rubyMaterial = resources.container< Material::PBRResource >()
+				->getOrCreateResource("RubyMaterial", [] (auto & mat) {
+					mat.setAlbedoComponent({0.6F, 0.02F, 0.02F, 1.0F});
+					mat.setRoughnessComponent(0.05F);
+					mat.setMetalnessComponent(0.0F);
+					mat.setReflectionComponentFromEnvironmentCubemap(1.0F);
+					mat.setClearCoatComponent(1.0F, 0.01F);
+					mat.setSubsurfaceComponent(0.5F, 0.8F, {0.8F, 0.1F, 0.1F, 1.0F});
+					return mat.setManualLoadSuccess(true);
+				});
+
+			toolkit.setCursor(200.0F, -75.0F, -200.0F);
+			m_rubySphere = toolkit.generateSphereInstance("RubySphere", 35.0F, rubyMaterial, false, true, 64).entity();
+
+			/* Sapphire sphere - iridescent gemstone. */
+			const auto sapphireMaterial = resources.container< Material::PBRResource >()
+				->getOrCreateResource("SapphireMaterial", [] (auto & mat) {
+					mat.setAlbedoComponent({0.02F, 0.05F, 0.4F, 1.0F});
+					mat.setRoughnessComponent(0.05F);
+					mat.setMetalnessComponent(0.0F);
+					mat.setReflectionComponentFromEnvironmentCubemap(1.0F);
+					mat.setClearCoatComponent(1.0F, 0.01F);
+					mat.setIridescenceComponent(0.3F, 1.5F, 200.0F, 400.0F);
+					return mat.setManualLoadSuccess(true);
+				});
+
+			toolkit.setCursor(-200.0F, -75.0F, -200.0F);
+			m_sapphireSphere = toolkit.generateSphereInstance("SapphireSphere", 35.0F, sapphireMaterial, false, true, 64).entity();
+		}
+
+		/* NOTE: Create a floating torus with an iridescent material (Toolkit + custom geometry). */
+		{
+			const auto torusMaterial = resources.container< Material::PBRResource >()
+				->getOrCreateResource("TorusMaterial", [] (auto & mat) {
+					mat.setAlbedoComponent({0.02F, 0.02F, 0.03F, 1.0F});
+					mat.setRoughnessComponent(0.05F);
+					mat.setMetalnessComponent(0.0F);
+					mat.setReflectionComponentFromEnvironmentCubemap(1.0F);
+					mat.setIridescenceComponent(0.8F, 2.0F, 100.0F, 500.0F);
+					mat.setClearCoatComponent(1.0F, 0.01F);
+					mat.setSpecularComponent(2.0F, {0.9F, 0.9F, 1.0F, 1.0F});
+					return mat.setManualLoadSuccess(true);
+				});
+
+			const Geometry::ResourceGenerator generator{resources, Geometry::EnableTangentSpace | Geometry::EnablePrimaryTextureCoordinates};
+
+			toolkit.setCursor(0.0F, -200.0F, 0.0F);
+			const auto torusEntity = toolkit.generateRenderableInstance< Node >(
+				"TheTorus",
+				generator.torus(60.0F, 12.0F, 64, 32, "TorusGeometry"),
+				std::static_pointer_cast< Material::Interface >(torusMaterial)
+			);
+
+			m_torusNode = torusEntity.entity();
+		}
+
+		/* NOTE: Start the parametric music (generated procedurally by the engine). */
+		{
+			const auto music = resources.container< Audio::MusicResource >()->getDefaultResource();
+
+			auto & trackMixer = this->audioManager().trackMixer();
+			trackMixer.addToPlaylist(music);
+			trackMixer.setVolume(0.5F);
+			trackMixer.play();
+		}
+
 		/* NOTE: Enable the new scene. */
 		this->sceneManager().enableScene(newScene);
 
@@ -225,9 +400,43 @@ namespace ProjetNihil
 	void
 	Application::onCoreProcessLogics (size_t engineCycle) noexcept
 	{
+		/* NOTE: Rotate the porcelain cube around its vertical axis. */
 		if ( const auto cubeNode = m_cubeNode.lock() )
 		{
 			cubeNode->yaw(0.01F, Math::TransformSpace::World);
+		}
+
+		/* NOTE: Rotate the torus slowly around two axes for a floating effect. */
+		if ( const auto torusNode = m_torusNode.lock() )
+		{
+			torusNode->yaw(0.005F, Math::TransformSpace::World);
+			torusNode->pitch(0.003F, Math::TransformSpace::Local);
+		}
+
+		/* NOTE: Bobbing spheres: each with different period, amplitude, and phase offset. */
+		{
+			const auto time = static_cast< float >(engineCycle) * EngineUpdateCycleDurationS< float >;
+
+			struct BobParams { float period; float amplitude; float phaseOffset; float baseY; };
+			constexpr std::array< BobParams, 4 > bobbing{{
+				{5.0F,  25.0F, 0.0F,            -75.0F},  /* Gold: slow, large. */
+				{3.5F,  18.0F, 1.5707963F,      -75.0F},  /* Chrome: medium, offset pi/2. */
+				{7.0F,  30.0F, 3.1415927F,      -75.0F},  /* Ruby: very slow, large, offset pi. */
+				{4.2F,  20.0F, 0.7853982F,      -75.0F},  /* Sapphire: medium, offset pi/4. */
+			}};
+
+			auto applySphereY = [&time] (const std::weak_ptr< StaticEntity > & weakSphere, const BobParams & params) {
+				if ( const auto sphere = weakSphere.lock() )
+				{
+					const auto y = params.baseY + params.amplitude * std::sin(2.0F * std::numbers::pi_v< float > * time / params.period + params.phaseOffset);
+					sphere->setYPosition(y, Math::TransformSpace::World);
+				}
+			};
+
+			applySphereY(m_goldSphere,     bobbing[0]);
+			applySphereY(m_chromeSphere,   bobbing[1]);
+			applySphereY(m_rubySphere,     bobbing[2]);
+			applySphereY(m_sapphireSphere, bobbing[3]);
 		}
 
 		/* NOTE: Each cycle we make the camera look at the center of the scene. */

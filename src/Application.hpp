@@ -31,6 +31,7 @@
 
 /* Local inclusions for inheritances. */
 #include "Core.hpp"
+#include "Scenes/StaticEntity.hpp"
 #include "ApplicationSettingKeys.hpp"
 
 namespace ProjetNihil
@@ -160,6 +161,11 @@ namespace ProjetNihil
 			EmEn::Help m_applicationHelp{"Application"};
 			std::weak_ptr< EmEn::Scenes::Node > m_cameraNode;
 			std::weak_ptr< EmEn::Scenes::Node > m_cubeNode;
+			std::weak_ptr< EmEn::Scenes::Node > m_torusNode;
+			std::weak_ptr< EmEn::Scenes::StaticEntity > m_goldSphere;
+			std::weak_ptr< EmEn::Scenes::StaticEntity > m_chromeSphere;
+			std::weak_ptr< EmEn::Scenes::StaticEntity > m_rubySphere;
+			std::weak_ptr< EmEn::Scenes::StaticEntity > m_sapphireSphere;
 			bool m_useStaticLighting{DefaultUseStaticLighting};
 	};
 }
