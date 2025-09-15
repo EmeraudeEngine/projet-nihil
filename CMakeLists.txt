@@ -51,15 +51,14 @@ project(
 set(CMAKE_VERBOSE_MAKEFILE On)
 set(CMAKE_EXPORT_COMPILE_COMMANDS On)
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE})
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE})
+# Configure output directory by compilation type.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
 
 set_property(GLOBAL PROPERTY USE_FOLDERS On)
 
-# Print out project paths
-message("[${PROJECT_NAME}] Source directory : ${CMAKE_SOURCE_DIR}, current : ${CMAKE_CURRENT_SOURCE_DIR}")
-message("[${PROJECT_NAME}] Binary directory : ${CMAKE_BINARY_DIR}, current : ${CMAKE_CURRENT_BINARY_DIR}")
-message("[${PROJECT_NAME}] Install directory : ${CMAKE_INSTALL_PREFIX}")
+
 
 # Projet-Nihil application options.
 set(PROJECT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -68,7 +67,9 @@ if ( UNIX AND NOT APPLE )
 	message("Linux platform detected !")
 
 	set(APP_ARCH "x86_64" CACHE STRING "Target architecture for Linux.")
-	set(LOCAL_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/emeraude-engine/dependencies/linux.${APP_ARCH}-${CMAKE_BUILD_TYPE} CACHE STRING "Final directory for local libraries.")
+
+	message("Linux platform targets arch ${APP_ARCH}")
+
 	set(PROJECT_COMPILATION_DIR "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}" CACHE STRING "")
 	set(PROJECT_INSTALL_DIR "." CACHE STRING "")
 elseif ( APPLE )
@@ -84,33 +85,20 @@ elseif ( APPLE )
 		message(FATAL_ERROR "Please specify the architecture for macOS with -DCMAKE_OSX_ARCHITECTURES=x86_64 or -DCMAKE_OSX_ARCHITECTURES=arm64 !")
 	endif ()
 
-	set(CMAKE_OSX_ARCHITECTURES ${APP_ARCH})
-	set(CMAKE_OSX_DEPLOYMENT_TARGET ${APP_OSX_DEPLOYMENT_TARGET})
+	message("Apple platform targets arch ${APP_ARCH} with SDK ${APP_OSX_DEPLOYMENT_TARGET}")
 
-	message("macOS target arch ${CMAKE_OSX_ARCHITECTURES} with SDK ${CMAKE_OSX_DEPLOYMENT_TARGET}")
-
-	set(LOCAL_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/emeraude-engine/dependencies/mac.${APP_ARCH}-${CMAKE_BUILD_TYPE} CACHE STRING "Final directory for local libraries for macOS.")
 	set(PROJECT_COMPILATION_DIR "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${PROJECT_NAME}.app" CACHE STRING "")
 	set(PROJECT_INSTALL_DIR "./${PROJECT_NAME}.app" CACHE STRING "")
+
+	set(CMAKE_OSX_ARCHITECTURES ${APP_ARCH})
+	set(CMAKE_OSX_DEPLOYMENT_TARGET ${APP_OSX_DEPLOYMENT_TARGET})
 elseif ( MSVC )
 	message("Windows platform detected !")
 
-	# FIXME: Pass these info directly to MSVC via flags
-	set(CMAKE_C_STANDARD 17)
-	set(CMAKE_C_STANDARD_REQUIRED On)
-	set(CMAKE_C_EXTENSIONS On)
-	set(CMAKE_C_FLAGS_DEBUG "-DDEBUG")
-	set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG")
-	set(CMAKE_CXX_STANDARD 20)
-	set(CMAKE_CXX_STANDARD_REQUIRED On)
-	set(CMAKE_CXX_EXTENSIONS On)
-	set(CMAKE_CXX_FLAGS_DEBUG "-DDEBUG")
-	set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG")
-
-	set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-
 	set(APP_ARCH "x86_64" CACHE STRING "Target architecture for Windows.")
-	set(LOCAL_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/emeraude-engine/dependencies/windows.${APP_ARCH}-${CMAKE_BUILD_TYPE} CACHE STRING "Final directory for local libraries for Windows.")
+
+	message("Windows platform targets arch ${APP_ARCH}")
+
 	set(PROJECT_COMPILATION_DIR "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}" CACHE STRING "")
 	set(PROJECT_INSTALL_DIR "." CACHE STRING "")
 endif ()
@@ -153,7 +141,7 @@ elseif ( MSVC )
 endif ()
 
 # Debug source file
-set(SHOW_SOURCES_FILES On CACHE BOOL "Show project header/source files found to cmake output.")
+set(SHOW_SOURCES_FILES Off CACHE BOOL "Show project header/source files found to cmake output.")
 
 if ( ${SHOW_SOURCES_FILES} )
 	string(REPLACE ";" "\n" LIST "${MAIN_HEADER_FILES}")
@@ -164,25 +152,19 @@ if ( ${SHOW_SOURCES_FILES} )
 endif ()
 
 # Create the executable
-add_executable(${PROJECT_NAME} ${MAIN_HEADER_FILES} ${MAIN_SOURCE_FILES})
-
-set_target_properties(${PROJECT_NAME} PROPERTIES
-	C_STANDARD 17
-	C_STANDARD_REQUIRED On
-	C_EXTENSIONS On
-	CXX_STANDARD 20
-	CXX_STANDARD_REQUIRED On
-	CXX_EXTENSIONS On
-)
-
-target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:DEBUG>)
-target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:NDEBUG>)
-
-target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR})
-target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR}/include)
-
 if ( MSVC )
 	message("Configuring C++ compiler (>= MSVC 2022) for Windows ...")
+
+	add_executable(${PROJECT_NAME} WIN32 ${MAIN_HEADER_FILES} ${MAIN_SOURCE_FILES})
+
+	set_target_properties(${PROJECT_NAME} PROPERTIES
+		C_STANDARD 17 # Next standard will be C23
+		C_STANDARD_REQUIRED On
+		C_EXTENSIONS Off
+		CXX_STANDARD 20 # Next standard will be C++23, then C++26.
+		CXX_STANDARD_REQUIRED On
+		CXX_EXTENSIONS Off
+	)
 
 	target_compile_options(${PROJECT_NAME} PRIVATE
 		/wd4100       # Ignore "unreferenced formal parameter" warning
@@ -198,7 +180,6 @@ if ( MSVC )
 		/Gy           # Enable function-level linking
 		/EHsc		  # Enable exceptions
 		/W4           # Warning level 4
-		/Ob2
 		$<$<CONFIG:Debug>:-DDEBUG
 			/RTC1         # Disable optimizations
 			/Od           # Enable basic run-time checks
@@ -212,8 +193,19 @@ if ( MSVC )
 		>
 	)
 elseif ( UNIX )
+	add_executable(${PROJECT_NAME} ${MAIN_HEADER_FILES} ${MAIN_SOURCE_FILES})
+
 	if ( APPLE )
 		message("Configuring C++ compiler (>= AppleClang 17.0) for macOS ...")
+
+		set_target_properties(${PROJECT_NAME} PROPERTIES
+			C_STANDARD 17 # Next standard will be C23
+			C_STANDARD_REQUIRED On
+			C_EXTENSIONS Off
+			CXX_STANDARD 20 # Next standard will be C++23, then C++26.
+			CXX_STANDARD_REQUIRED On
+			CXX_EXTENSIONS Off
+		)
 
 		target_compile_options(${PROJECT_NAME} PRIVATE
 				-Wno-unknown-pragmas
@@ -237,6 +229,15 @@ elseif ( UNIX )
 		)
 	else ()
 		message("Configuring C++ compiler (>= G++13.3) for Linux ...")
+
+		set_target_properties(${PROJECT_NAME} PROPERTIES
+			C_STANDARD 17 # Next standard will be C23
+			C_STANDARD_REQUIRED On
+			C_EXTENSIONS On
+			CXX_STANDARD 20 # Next standard will be C++23, then C++26.
+			CXX_STANDARD_REQUIRED On
+			CXX_EXTENSIONS On
+		)
 
 		target_compile_options(${PROJECT_NAME} PRIVATE
 			-Wno-unknown-pragmas
@@ -264,6 +265,12 @@ else ()
 	message(FATAL_ERROR "Unsupported platform!")
 endif ()
 
+target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:DEBUG>)
+target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:NDEBUG>)
+
+target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR}/include)
+
 
 
 #######################################################################
@@ -271,13 +278,15 @@ endif ()
 set(EMERAUDE_COMPILATION_DIR "${PROJECT_COMPILATION_DIR}" CACHE STRING "" FORCE)
 set(EMERAUDE_INSTALL_DIR "${PROJECT_INSTALL_DIR}" CACHE STRING "" FORCE)
 
+# TODO: Make this dependencies working
+if ( APPLE )
+	set(EMERAUDE_ENABLE_ASIO Off CACHE BOOL "" FORCE) # Bugs with exception
+endif ()
+
 add_subdirectory(${CMAKE_SOURCE_DIR}/dependencies/emeraude-engine Emeraude EXCLUDE_FROM_ALL)
 
-message("Emeraude-Engine source directory : ${EMERAUDE_SOURCE_DIR}")
-message("Emeraude-Engine dependencies directory : ${EMERAUDE_DEPENDENCIES_DIR}")
-message("Emeraude-Engine local libraries directory : ${LOCAL_LIB_DIR}")
-
 target_include_directories(${PROJECT_NAME} PRIVATE ${EMERAUDE_SOURCE_DIR})
+
 target_link_libraries(${PROJECT_NAME} PRIVATE Emeraude)
 
 

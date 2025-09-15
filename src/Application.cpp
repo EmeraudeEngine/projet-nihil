@@ -40,8 +40,6 @@ namespace ProjetNihil
 	using namespace EmEn::Libs;
 	using namespace EmEn::Graphics;
 
-	const size_t Application::ClassUID{getClassUID(ClassId)};
-
 	Application::Application (int argc, char * * argv) noexcept
 		: Core(argc, argv, ApplicationName, {ApplicationVersionMajor, ApplicationVersionMinor, ApplicationVersionPatch}, ApplicationOrganization, ApplicationDomain)
 	{
@@ -236,7 +234,7 @@ namespace ProjetNihil
 		/* NOTE: Tells Core we don't know this observable, so we 'forget it'.
 		 * Set 'true' to keep the observable for further information. */
 		TraceDebug{ClassId} <<
-			"Received an unhandled notification (Code:" << notificationCode << ") from observable '" << whoIs(observable->classUID()) << "' (UID:" << observable->classUID() << ")  ! "
+			"Received an unhandled notification (Code:" << notificationCode << ") from observable (UID:" << observable->classUID() << ")  ! "
 			"Forgetting it ...";
 
 		return false;
