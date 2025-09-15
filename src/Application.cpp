@@ -29,6 +29,7 @@
 /* Local inclusions. */
 #include "PlatformSpecific/Desktop/Dialog/Message.hpp"
 #include "Animations/Sequence.hpp"
+#include "Graphics/Material/PBRResource.hpp"
 #include "Graphics/Geometry/ResourceGenerator.hpp"
 #include "Graphics/Renderable/SkyBoxResource.hpp"
 #include "Graphics/Renderable/BasicGroundResource.hpp"
@@ -94,13 +95,14 @@ namespace ProjetNihil
 		/* NOTE: Create a ground modified with the perlin noise algorithm. */
 		const auto defaultSceneArea = resources.container< Renderable::BasicGroundResource >()
 			->getOrCreateResource("DemoBasicGround", [&resources] (Renderable::BasicGroundResource & newResource) {
-				const auto materialResource = resources.container< Material::BasicResource >()
-					->getOrCreateResource("DemoBasicGroundMaterial", [] (Material::BasicResource & newMaterial) {
-						return newMaterial.load(
-							{0.61F, 0.55F, 0.38F, 1.0F},
-							{0.33F, 0.66F, 0.0F, 1.0F},
-							32.0F
-						);
+				const auto materialResource = resources.container< Material::PBRResource >()
+					->getOrCreateResource("DemoBasicGroundMaterial", [] (auto & newMaterial) {
+						newMaterial.setAlbedoComponent({0.61F, 0.55F, 0.38F, 1.0F});
+						newMaterial.setRoughnessComponent(0.35F);
+						newMaterial.setMetalnessComponent(1.0F);
+						newMaterial.setReflectionComponentFromEnvironmentCubemap();
+
+						return newMaterial.setManualLoadSuccess(true);
 					});
 
 				return newResource.loadDiamondSquare(
@@ -180,7 +182,7 @@ namespace ProjetNihil
 				.setup([] (auto & component) {
 					component.setColor(White);
 					component.setIntensity(1.2F);
-				}).build();
+				}).build(1024, 500.0F);
 
 			newScene->lightSet().enable();
 		}
@@ -191,10 +193,12 @@ namespace ProjetNihil
 				->getOrCreateResource("TheCubeMesh", [&resources] (Renderable::SimpleMeshResource & newMesh) {
 					const Geometry::ResourceGenerator generator{resources, Geometry::EnableNormal | Geometry::EnablePrimaryTextureCoordinates};
 
-					const auto materialResource = resources.container< Material::BasicResource >()
-						->getOrCreateResource("TheCubeMaterial", [&resources] (Material::BasicResource & newMaterial) {
-							newMaterial.setTexture(resources.container< TextureResource::Texture2D >()->getDefaultResource());
-							newMaterial.setSpecularComponent(White, 128.0F);
+					const auto materialResource = resources.container< Material::PBRResource >()
+						->getOrCreateResource("TheCubeMaterial", [&resources] (auto & newMaterial) {
+							newMaterial.setAlbedoComponent(resources.container< TextureResource::Texture2D >()->getDefaultResource());
+							newMaterial.setRoughnessComponent(0.75F);
+							newMaterial.setMetalnessComponent(1.0F);
+							newMaterial.setReflectionComponentFromEnvironmentCubemap();
 
 							return newMaterial.setManualLoadSuccess(true);
 						});
