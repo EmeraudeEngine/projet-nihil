@@ -1,0 +1,9 @@
+{
+	"project_name": "Projet-Nihil",
+	"project_url": "https://github.com/EmeraudeEngine/projet-nihil",
+	"author": "Sébastien Léon Claude Christian Bémelmans \"LondNoir\" <londnoir@gmail.com>",
+	"license": "lgpl3",
+	"paths": ["./src"],
+	"extensions": ["h", "hpp", "c", "cpp", "in"],
+	"exclusions": ["txt"]
+}
