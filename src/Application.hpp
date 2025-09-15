@@ -31,18 +31,20 @@
 
 /* Local inclusions for inheritances. */
 #include "Core.hpp"
+#include "ApplicationSettingKeys.hpp"
 
 namespace ProjetNihil
 {
+	/**
+	 * @brief The main class to initialize the user application.
+	 * @extends EmEn::Core This is the base class for an emeraude-based application.
+	 */
 	class Application final : public EmEn::Core
 	{
 		public:
 
 			/** @brief Class identifier. */
 			static constexpr auto ClassId{"ProjetNihil"};
-
-			/** @brief Observable class unique identifier. */
-			static const size_t ClassUID;
 
 			/**
 			 * @brief Constructs the application.
@@ -53,7 +55,7 @@ namespace ProjetNihil
 
 #if IS_WINDOWS
 			/**
-			 * @brief Constructs the application.
+			 * @brief Constructs the application (Windows version).
 			 * @param argc The argument count from the standard C/C++ main() function.
 			 * @param wargv The argument value from the standard C/C++ main() function.
 			 */
@@ -91,12 +93,25 @@ namespace ProjetNihil
 			 */
 			~Application () override = default;
 
+			/**
+			 * @brief Returns the unique identifier for this class [Thread-safe].
+			 * @return size_t
+			 */
+			static
+			size_t
+			getClassUID () noexcept
+			{
+				static const size_t classUID = EmEn::Libs::Hash::FNV1a(ClassId);
+
+				return classUID;
+			}
+
 			/** @copydoc EmEn::Libs::ObservableTrait::classUID() const */
 			[[nodiscard]]
 			size_t
 			classUID () const noexcept override
 			{
-				return ClassUID;
+				return getClassUID();
 			}
 
 			/** @copydoc EmEn::Libs::ObservableTrait::is() const */
@@ -104,7 +119,7 @@ namespace ProjetNihil
 			bool
 			is (size_t classUID) const noexcept override
 			{
-				return classUID == ClassUID;
+				return classUID == getClassUID();
 			}
 
 			/**
@@ -131,42 +146,22 @@ namespace ProjetNihil
 
 		private:
 
-			/** @copydoc EmEn::Core::onBeforeSecondaryServicesInitialization() */
+			/** @copydoc EmEn::Core::onBeforeCoreSecondaryServicesInitialization() */
 			[[nodiscard]]
-			bool onBeforeSecondaryServicesInitialization () noexcept override;
+			bool onBeforeCoreSecondaryServicesInitialization () noexcept override;
 
-			/** @copydoc EmEn::Core::onStart() */
-			bool onStart () noexcept override;
+			/** @copydoc EmEn::Core::onCoreStarted() */
+			bool onCoreStarted () noexcept override;
 
-			/** @copydoc EmEn::Core::onResume() */
-			void onResume () noexcept override;
+			/** @copydoc EmEn::Core::onCoreProcessLogics() */
+			void onCoreProcessLogics (size_t engineCycle) noexcept override;
 
-			/** @copydoc EmEn::Core::onProcessLogics() */
-			void onProcessLogics (size_t engineCycle) noexcept override;
-
-			/** @copydoc EmEn::Core::onPause() */
-			void onPause () noexcept override;
-
-			/** @copydoc EmEn::Core::onStop() */
-			void onStop () noexcept override;
-
-			/** @copydoc EmEn::Core::onAppKeyPress() */
-			bool onAppKeyPress (int32_t key, int32_t scancode, int32_t modifiers, bool repeat) noexcept override;
-
-			/** @copydoc EmEn::Core::onAppKeyRelease() */
-			bool onAppKeyRelease (int32_t key, int32_t scancode, int32_t modifiers) noexcept override;
-
-			/** @copydoc EmEn::Core::onAppCharacterType() */
-			bool onAppCharacterType (uint32_t unicode) noexcept override;
-
-			/** @copydoc EmEn::Core::onAppNotification() */
-			bool onAppNotification (const ObservableTrait * observable, int notificationCode, const std::any & data) noexcept override;
-
-			/** @copydoc EmEn::Core::onOpenFiles() */
-			void onOpenFiles (const std::vector< std::filesystem::path > & filepaths) noexcept override;
+			/** @copydoc EmEn::Core::onCoreKeyRelease() */
+			bool onCoreKeyRelease (int32_t key, int32_t scancode, int32_t modifiers) noexcept override;
 
 			EmEn::Help m_applicationHelp{"Application"};
+			std::weak_ptr< EmEn::Scenes::Node > m_cameraNode;
 			std::weak_ptr< EmEn::Scenes::Node > m_cubeNode;
-			bool m_useStaticLighting{false};
+			bool m_useStaticLighting{DefaultUseStaticLighting};
 	};
 }
