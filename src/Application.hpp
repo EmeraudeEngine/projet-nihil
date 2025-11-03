@@ -31,9 +31,14 @@
 
 /* Local inclusions for inheritances. */
 #include "Core.hpp"
+#include "ApplicationSettingKeys.hpp"
 
 namespace ProjetNihil
 {
+	/**
+	 * @brief The main class to initialize the user application.
+	 * @extends EmEn::Core This is the base class for an emeraude-based application.
+	 */
 	class Application final : public EmEn::Core
 	{
 		public:
@@ -50,7 +55,7 @@ namespace ProjetNihil
 
 #if IS_WINDOWS
 			/**
-			 * @brief Constructs the application.
+			 * @brief Constructs the application (Windows version).
 			 * @param argc The argument count from the standard C/C++ main() function.
 			 * @param wargv The argument value from the standard C/C++ main() function.
 			 */
@@ -176,7 +181,8 @@ namespace ProjetNihil
 			void onOpenFiles (const std::vector< std::filesystem::path > & filepaths) noexcept override;
 
 			EmEn::Help m_applicationHelp{"Application"};
+			std::weak_ptr< EmEn::Scenes::Node > m_cameraNode;
 			std::weak_ptr< EmEn::Scenes::Node > m_cubeNode;
-			bool m_useStaticLighting{false};
+			bool m_useStaticLighting{DefaultUseStaticLighting};
 	};
 }

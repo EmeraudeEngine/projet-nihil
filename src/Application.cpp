@@ -28,7 +28,7 @@
 
 /* Local inclusions. */
 #include "PlatformSpecific/Desktop/Dialog/Message.hpp"
-#include "ApplicationSettingKeys.hpp"
+#include "Animations/Sequence.hpp"
 #include "Graphics/Geometry/ResourceGenerator.hpp"
 #include "Graphics/Renderable/SkyBoxResource.hpp"
 #include "Graphics/Renderable/BasicFloorResource.hpp"
@@ -41,7 +41,7 @@ namespace ProjetNihil
 	using namespace EmEn::Graphics;
 
 	Application::Application (int argc, char * * argv) noexcept
-		: Core(argc, argv, ApplicationName, {ApplicationVersionMajor, ApplicationVersionMinor, ApplicationVersionPatch}, ApplicationOrganization, ApplicationDomain)
+		: Core{argc, argv, ApplicationName, {ApplicationVersionMajor, ApplicationVersionMinor, ApplicationVersionPatch}, ApplicationOrganization, ApplicationDomain}
 	{
 		/* Register shortcuts. */
 		m_applicationHelp.registerShortcut("Show an informative dialog box.", Input::Key::KeyF1);
@@ -49,7 +49,7 @@ namespace ProjetNihil
 
 #if IS_WINDOWS
 	Application::Application (int argc, wchar_t * * wargv) noexcept
-		: Core(argc, wargv, ApplicationName, {ApplicationVersionMajor, ApplicationVersionMinor, ApplicationVersionPatch}, ApplicationOrganization, ApplicationDomain)
+		: Core{argc, wargv, ApplicationName, {ApplicationVersionMajor, ApplicationVersionMinor, ApplicationVersionPatch}, ApplicationOrganization, ApplicationDomain}
 	{
 		/* Register shortcuts. */
 		m_applicationHelp.registerShortcut("Show an informative dialog box.", Input::Key::KeyF1);
@@ -63,7 +63,7 @@ namespace ProjetNihil
 		 * All usable by a call to "this->primaryServices()". There will be no window, graphics renderer etc.
 		 * If this function returns "true", the engine will properly stop the initialization. */
 
-		m_useStaticLighting = this->primaryServices().settings().get< bool >(UseStaticLightingKey, DefaultUseStaticLighting);
+		m_useStaticLighting = this->primaryServices().settings().getOrSetDefault< bool >(UseStaticLightingKey, DefaultUseStaticLighting);
 
 		/* We let the engine continuing the initialization. */
 		return false;
@@ -72,16 +72,34 @@ namespace ProjetNihil
 	bool
 	Application::onStart () noexcept
 	{
-		/* NOTE: Here the engine is fully initialized.
-		 * This is where the user application can begin its own initialization. */
+		/* =====================================================================
+		 * NOTE: Here the engine is fully initialized,
+		 * the user application is ready to start.
+		 * This is where the user application can begin its own initialization.
+		 * ===================================================================== */
 
+		/* NOTE: The resource manager is provided by Core and gave access to textures, mesh, etc. */
 		auto & resourceManager = this->resourceManager();
 
 		/* NOTE: Get the default skybox. */
 		const auto defaultSkyBox = resourceManager.container< Renderable::SkyBoxResource >()->getDefaultResource();
 
-		/* NOTE: Get the default scene area, or the ground. */
-		const auto defaultSceneArea = resourceManager.container< Renderable::BasicFloorResource >()->getDefaultResource();
+		/* NOTE: Get the default scene area (ground). */
+		//const auto defaultSceneArea = resourceManager.container< Renderable::BasicFloorResource >()->getDefaultResource();
+
+		/* NOTE: Create a ground modified with the perlin noise algorithm. */
+		const auto defaultSceneArea = resourceManager.container< Renderable::BasicFloorResource >()
+			->getOrCreateResource("TheSceneArea", [&resourceManager] (Renderable::BasicFloorResource & newResource) {
+				constexpr auto Boundary{4096.0F};
+				const auto materialResource = resourceManager.container< Material::BasicResource >()->getDefaultResource();
+
+				if ( !newResource.loadPerlinNoise(Boundary, 256, 10.0F, 200.0F, materialResource, 1.0F) )
+				{
+					return false;
+				}
+
+				return true;
+			});
 
 		/* NOTE: Create the new scene. */
 		const auto newScene = this->sceneManager().newScene(
@@ -94,28 +112,64 @@ namespace ProjetNihil
 
 		/* NOTE: Create a camera inside the scene. */
 		{
-			const auto sceneNode = newScene->root()->createChild("TheCameraNode", 0, Math::Vector< 3, float >{-512.0F, -80.0F, 256.0F});
+			const auto sceneNode = newScene->root()->createChild("TheCameraNode", Math::CartesianFrame{-512.0F, -80.0F, 256.0F});
 			sceneNode->newCamera(true, true, "TheCamera");
 			sceneNode->lookAt(Math::Vector< 3, float >{0.0F, -75.0F, 0.0F}, false);
+
+			{
+				constexpr auto segmentCount{16U};
+				constexpr auto radius{512.0F};
+				constexpr float yMax = -70.0F;
+				constexpr float yMin = -350.0F;
+				constexpr float yCenter = (yMax + yMin) / 2.0F;
+				constexpr float yAmplitude = (yMax - yMin) / 2.0F;
+
+				/* NOTE: Create the animation interpolation */
+				const auto interpolation = std::make_shared< Animations::Sequence >(30'000);
+
+				for ( uint32_t index = 0; index <= segmentCount; ++index )
+				{
+					const auto timePoint = static_cast< float >(index) / static_cast< float >(segmentCount);
+
+					const auto currentAngle = timePoint * (2.0F * std::numbers::pi_v< float >);
+
+					const Math::Vector< 3, float > position{
+						radius * std::cos(currentAngle),
+						yCenter + (yAmplitude * std::cos(currentAngle * 2.0F)),
+						radius * std::sin(currentAngle)
+					};
+
+					interpolation->addKeyFrame(timePoint, Variant{position}, Math::InterpolationType::Linear);
+				}
+
+				interpolation->play();
+
+				sceneNode->addAnimation(Scenes::Node::WorldPosition, interpolation);
+			}
+
+			m_cameraNode = sceneNode;
 		}
 
 		/* NOTE: Create a directional light. */
 		if ( m_useStaticLighting )
 		{
-			/* FIXME: This is broken for now. */
-			newScene->lightSet().enableAsStaticLighting();
+			TraceInfo{ClassId} << "Using static lighting ...";
+
+			auto & staticLighting = newScene->lightSet().enableAsStaticLighting();
+			staticLighting.setAmbientParameters(PixelFactory::DarkBlue, 0.15F);
+			staticLighting.setLightParameters(PixelFactory::DarkYellow, 1.5F);
+			staticLighting.setAsDirectionalLight({-750.0F, -1000.0F, 250.0F});
 		}
 		else
 		{
-			const auto sceneNode = newScene->root()->createChild("TheSunNode", 0, Math::Vector< 3, float >{-750.0F, -1000.0F, 250.0F});
-			/* TODO: In an advanced version, this should be automatized. */
-			sceneNode->lookAt(Math::Vector< 3, float >::origin(), true);
+			TraceInfo{ClassId} << "Using dynamic lighting ...";
+
+			const auto sceneNode = newScene->root()->createChild("TheSunNode", Math::CartesianFrame{-750.0F, -1000.0F, 250.0F});
 
 			const auto component = sceneNode->newDirectionalLight(0, "TheSun");
 			component->setColor(PixelFactory::White);
 			component->setIntensity(1.2F);
 
-			/* TODO: In an advanced version, this should be automatized at light addition. */
 			newScene->lightSet().enable();
 		}
 
@@ -135,13 +189,13 @@ namespace ProjetNihil
 
 				if ( materialResource == nullptr )
 				{
-				return false;
+					return false;
 				}
 
 				return newMesh.load(geometryResource, materialResource);
 		   });
 
-			const auto sceneNode = newScene->root()->createChild("TheCubeNode", 0, Math::Vector< 3, float >{0.0F, -75.0F, 0.0F});
+			const auto sceneNode = newScene->root()->createChild("TheCubeNode", Math::CartesianFrame{0.0F, -75.0F, 0.0F});
 			sceneNode->newVisual(cubeResource, false, true, "TheCube");
 
 			m_cubeNode = sceneNode;
@@ -166,6 +220,12 @@ namespace ProjetNihil
 		if ( const auto cubeNode = m_cubeNode.lock() )
 		{
 			cubeNode->yaw(0.01F, Math::TransformSpace::World);
+		}
+
+		/* NOTE: Each cycle we make the camera look at the center of the scene. */
+		if ( const auto cameraNode = m_cameraNode.lock() )
+		{
+			cameraNode->lookAt({0.0F, -75.0F, 0.0F}, false);
 		}
 	}
 
