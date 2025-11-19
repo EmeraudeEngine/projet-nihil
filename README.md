@@ -1,94 +1,201 @@
 # Projet-Nihil
 
-## Introduction
+![License](https://img.shields.io/badge/license-LGPLv3-blue.svg)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)
 
-Projet-Nihil is a starting point to use Emeraude-Engine.
+A complete working example demonstrating how to use [Emeraude Engine](https://github.com/EmeraudeEngine/emeraude-engine) to build 3D applications. This project serves as a starting point and reference implementation for developers getting started with the engine.
+
+## What This Project Demonstrates
+
+- **Application lifecycle:** Proper initialization, update loop, and shutdown patterns
+- **Scene management:** Creating and configuring 3D scenes with skybox and terrain
+- **Resource loading:** Using the resource manager for meshes, materials, and geometry
+- **Camera system:** Setting up an animated camera with smooth interpolation
+- **Lighting:** Configuring both static and dynamic lighting setups
+- **Scene nodes:** Creating and manipulating scene graph nodes with transforms
+- **Animations:** Implementing keyframe-based animations with interpolation
+- **Procedural generation:** Generating terrain using Perlin noise
+- **Input handling:** Processing keyboard events and implementing application shortcuts
 
 
 ## Requirements
 
-- A C++20 compiler. This library is maintained from :
-    - "Debian 13 (GNU/Linux)" using "G++ 14.2.0" compiler
-    - "Ubuntu 24.04 LTS (GNU/Linux)" using "G++ 13.3.0" compiler
-    - "Apple macOS Sequoia 15.5" using "Apple Clang 17.0" compiler and the minimal SDK version 12.0
-    - "Microsoft Windows 11" using "MSVC 19.43.34812.0" compiler ("Visual Studio 2022 Community Edition")
-- CMake 3.25.1+ to generate the project
-- Python 3
-- Vulkan SDK 1.4.309.0 from https://vulkan.lunarg.com/sdk/home
+### Build Tools
+- **CMake:** 3.25.1 or higher
+- **Python:** 3.0 or higher
+- **C++20 Compiler:**
+  - **Linux:** GCC 13.3.0+ (Ubuntu 24.04 LTS) or GCC 14.2.0+ (Debian 13)
+  - **macOS:** Apple Clang 17.0+ with SDK 12.0+ (tested on macOS Sequoia 15.5)
+  - **Windows:** MSVC 19.43+ / Visual Studio 2022
+
+### Dependencies
+- **Vulkan SDK:** 1.4.309.0 from [vulkan.lunarg.com](https://vulkan.lunarg.com/sdk/home)
+- **Emeraude Engine:** Automatically cloned as a git submodule during configuration
+- **Precompiled libraries:** Required for engine dependencies (see installation steps below)
 
 
 ## Installation
 
-First, clone the repository.
+### Step 1: Install Vulkan SDK
+
+**Linux:**
+```bash
+sudo apt install libvulkan-dev vulkan-tools vulkan-validationlayers vulkan-validationlayers-dev
+```
+
+**macOS:**
+```bash
+# Download from:
+https://sdk.lunarg.com/sdk/download/1.4.309.0/mac/vulkansdk-macos-1.4.309.0.zip
+```
+
+**Windows:**
+```bash
+# Download and run installer from:
+https://sdk.lunarg.com/sdk/download/1.4.309.0/windows/VulkanSDK-1.4.309.0-Installer.exe
+```
+
+### Step 2: Clone the Repository
 
 ```bash
 git clone https://github.com/EmeraudeEngine/projet-nihil.git
+cd projet-nihil
 ```
 
-Next, in your favorite IDE compatible with CMake projects, you can open the project and let CMake do the configuration.
-This will clone the Emeraude-Engine repository.
+### Step 3: Download Precompiled Dependencies
 
-If you want to do it without an IDE, you can do the following:
+Download the precompiled libraries for your platform from [Google Drive](https://drive.google.com/drive/folders/1nDv35NuAPEg-XAGQIMZ7uCoqK3SK0VxZ?usp=drive_link).
 
+Extract the archive into `./dependencies/emeraude-engine/dependencies/`:
+
+**Linux:**
+```
+./dependencies/emeraude-engine/dependencies/
+├── linux.x86_64.Release/
+└── linux.x86_64.Debug/
+```
+
+**macOS:**
+```
+./dependencies/emeraude-engine/dependencies/
+├── mac.arm64.Release/
+└── mac.arm64.Debug/
+```
+
+**Windows:**
+```
+./dependencies/emeraude-engine/dependencies/
+├── windows.x86_64.Release-MD/
+└── windows.x86_64.Debug-MD/
+```
+
+### Step 4: Configure and Build
+
+**Using an IDE (CLion, Visual Studio, VSCode):**
+- Open the project folder
+- Let CMake configure automatically
+- Build the Release configuration
+
+**Using command line:**
 ```bash
-cmake -S ./projet-nihil -B ./projet-nihil-build
+# Configure
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+# Build
+cmake --build build --config Release
+
+# Run
+./build/Release/projet-nihil  # Linux/macOS
+.\build\Release\projet-nihil.exe  # Windows
 ```
 
-### The external dependencies (precompiled binaries)
+You should see a 3D scene with a rotating cube on procedurally generated terrain.
 
-You need to manually download external dependencies for your system. This is not automated by now.
+## Usage
 
-Here is the link: https://drive.google.com/drive/folders/1nDv35NuAPEg-XAGQIMZ7uCoqK3SK0VxZ?usp=drive_link
+### Controls
 
-Download the zip file and extract it in the `./projet-nihil/dependencies/emeraude-engine/dependencies/` folder. The result should be something like:
+- **F1:** Show application information dialog
+- **ESC:** Exit application (standard window close)
 
-For linux:
- - `./projet-nihil/dependencies/emeraude-engine/dependencies/linux.x86_64.Release`
- - `./projet-nihil/dependencies/emeraude-engine/dependencies/linux.x86_64.Debug`
+### Code Structure
 
-or for macOS:
- - `./projet-nihil/dependencies/emeraude-engine/dependencies/mac.arm64.Release`
- - `./projet-nihil/dependencies/emeraude-engine/dependencies/mac.arm64.Debug`
+The main application code is located in `src/Application.cpp`. Key methods:
 
-or for Windows:
- - `./projet-nihil/dependencies/emeraude-engine/dependencies/windows.x86_64.Release-MD`
- - `./projet-nihil/dependencies/emeraude-engine/dependencies/windows.x86_64.Debug-MD`
+- `onBeforeSecondaryServicesInitialization()`: Called before graphics/audio initialization
+- `onStart()`: Main setup - create scenes, cameras, lights, and objects
+- `onProcessLogics()`: Called every frame - update game logic
+- `onAppKeyPress()` / `onAppKeyRelease()`: Handle keyboard input
 
-### The Vulkan SDK
+## Learning from the Code
 
-For Linux, use the SDK provided by your distribution.
-
-For macOS, you can download it from https://sdk.lunarg.com/sdk/download/1.4.309.0/mac/vulkansdk-macos-1.4.309.0.zip
-
-For Windows, you can download it from https://sdk.lunarg.com/sdk/download/1.4.309.0/windows/VulkanSDK-1.4.309.0-Installer.exe
-
-
-## Compilation
-
-You can now compile the project in your IDE. 
-
-Or in the terminal:
-```bash
-cmake --build ./projet-nihil-build --config Release
+### Scene Setup (Application.cpp:104-111)
+```cpp
+const auto newScene = this->sceneManager().newScene(
+    "EmptyScene",
+    1000.0F,           // View distance
+    defaultSkyBox,     // Skybox resource
+    defaultSceneArea,  // Ground/terrain
+    nullptr            // Optional background music
+);
 ```
 
-At the end, you should normally see a basic scene on the screen when the application starts.
-
-
-## Quick recap in the terminal
-
-```bash
-# Clone the base project
-git clone https://github.com/EmeraudeEngine/projet-nihil.git
-
-# Projet configuration
-cmake -S ./projet-nihil -B ./projet-nihil-build
-
-# Here, manually download the external dependencies.
-
-# Compilation
-cmake --build ./projet-nihil-build --config Release
-
-# Execute the application
-./projet-nihil-build/Release/projet-nihil
+### Creating Scene Nodes (Application.cpp:115-117)
+```cpp
+const auto sceneNode = newScene->root()->createChild(
+    "TheCameraNode",
+    Math::CartesianFrame{-512.0F, -80.0F, 256.0F}
+);
+sceneNode->newCamera(true, true, "TheCamera");
 ```
+
+### Procedural Terrain Generation (Application.cpp:91-102)
+```cpp
+const auto defaultSceneArea = resourceManager.container< Renderable::BasicFloorResource >()
+    ->getOrCreateResource("TheSceneArea", [&resourceManager] (Renderable::BasicFloorResource & newResource) {
+        constexpr auto Boundary{4096.0F};
+        const auto materialResource = resourceManager.container< Material::BasicResource >()
+            ->getDefaultResource();
+
+        return newResource.loadPerlinNoise(
+            Boundary,    // Size
+            256,         // Subdivisions
+            10.0F,       // Frequency
+            200.0F,      // Amplitude
+            materialResource,
+            1.0F         // Scale
+        );
+    });
+```
+
+### Animation System (Application.cpp:128-147)
+```cpp
+const auto interpolation = std::make_shared< Animations::Sequence >(30'000);  // 30 seconds
+
+for ( uint32_t index = 0; index <= segmentCount; ++index ) {
+    const auto timePoint = static_cast< float >(index) / static_cast< float >(segmentCount);
+    const auto currentAngle = timePoint * (2.0F * std::numbers::pi_v< float >);
+
+    const Math::Vector< 3, float > position{
+        radius * std::cos(currentAngle),
+        yCenter + (yAmplitude * std::cos(currentAngle * 2.0F)),
+        radius * std::sin(currentAngle)
+    };
+
+    interpolation->addKeyFrame(timePoint, Variant{position}, Math::InterpolationType::Linear);
+}
+
+sceneNode->addAnimation(Scenes::Node::WorldPosition, interpolation);
+```
+
+## Additional Resources
+
+- **Engine Documentation:** [Emeraude Engine README](https://github.com/EmeraudeEngine/emeraude-engine)
+- **API Reference:** Coming soon
+- **Community:** [GitHub Discussions](https://github.com/EmeraudeEngine/emeraude-engine/discussions)
+
+## License
+
+This project is licensed under the **GNU Lesser General Public License v3.0 (LGPLv3)** - the same license as Emeraude Engine.
+
+See [LICENSE](LICENSE) for full details.
