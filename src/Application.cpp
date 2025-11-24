@@ -39,6 +39,7 @@ namespace ProjetNihil
 	using namespace EmEn;
 	using namespace EmEn::Libs;
 	using namespace EmEn::Graphics;
+	using namespace EmEn::Scenes;
 
 	Application::Application (int argc, char * * argv) noexcept
 		: Core{argc, argv, ApplicationName, {ApplicationVersionMajor, ApplicationVersionMinor, ApplicationVersionPatch}, ApplicationOrganization, ApplicationDomain}
@@ -113,7 +114,7 @@ namespace ProjetNihil
 		/* NOTE: Create a camera inside the scene. */
 		{
 			const auto sceneNode = newScene->root()->createChild("TheCameraNode", Math::CartesianFrame{-512.0F, -80.0F, 256.0F});
-			sceneNode->newCamera(true, true, "TheCamera");
+			sceneNode->componentBuilder< Component::Camera >("TheCamera").asPrimary().build(true);
 			sceneNode->lookAt(Math::Vector< 3, float >{0.0F, -75.0F, 0.0F}, false);
 
 			{
@@ -165,10 +166,11 @@ namespace ProjetNihil
 			TraceInfo{ClassId} << "Using dynamic lighting ...";
 
 			const auto sceneNode = newScene->root()->createChild("TheSunNode", Math::CartesianFrame{-750.0F, -1000.0F, 250.0F});
-
-			const auto component = sceneNode->newDirectionalLight(0, "TheSun");
-			component->setColor(PixelFactory::White);
-			component->setIntensity(1.2F);
+			sceneNode->componentBuilder< Component::DirectionalLight >("TheSun")
+				.setup([] (auto & component) {
+					component.setColor(PixelFactory::White);
+					component.setIntensity(1.2F);
+				}).build();
 
 			newScene->lightSet().enable();
 		}
@@ -196,7 +198,9 @@ namespace ProjetNihil
 		   });
 
 			const auto sceneNode = newScene->root()->createChild("TheCubeNode", Math::CartesianFrame{0.0F, -75.0F, 0.0F});
-			sceneNode->newVisual(cubeResource, false, true, "TheCube");
+			sceneNode->componentBuilder< Component::Visual >("TheCube").setup([] (auto & component) {
+				component.getRenderableInstance()->enableLighting();
+			}).build(cubeResource);
 
 			m_cubeNode = sceneNode;
 		}
