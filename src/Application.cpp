@@ -297,9 +297,7 @@ namespace ProjetNihil
 
 		/* NOTE: Tells Core we don't know this observable, so we 'forget it'.
 		 * Set 'true' to keep the observable for further information. */
-		TraceDebug{ClassId} <<
-			"Received an unhandled notification (Code:" << notificationCode << ") from observable (UID:" << observable->classUID() << ")  ! "
-			"Forgetting it ...";
+		TraceDebug{ClassId} << "Received an unhandled notification (Code:" << notificationCode << ") from observable (UID:" << observable->classUID() << ")  ! Forgetting it ...";
 
 		return false;
 	}
