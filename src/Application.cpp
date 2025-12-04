@@ -95,7 +95,7 @@ namespace ProjetNihil
 				constexpr auto Boundary{4096.0F};
 				const auto materialResource = resourceManager.container< Material::BasicResource >()->getDefaultResource();
 
-				if ( !newResource.loadPerlinNoise(Boundary, 256, 10.0F, 200.0F, materialResource, 1.0F) )
+				if ( !newResource.loadPerlinNoise(Boundary, 0.0F, 256, 10.0F, 200.0F, materialResource, 1.0F) )
 				{
 					return false;
 				}
