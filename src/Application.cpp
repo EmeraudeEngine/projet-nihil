@@ -72,7 +72,7 @@ namespace ProjetNihil
 	}
 
 	bool
-	Application::onCoreStarted () noexcept
+	Application::onCoreStarted (const Arguments & arguments, Settings & settings) noexcept
 	{
 		/* =====================================================================
 		 * NOTE: Here the engine is fully initialized,

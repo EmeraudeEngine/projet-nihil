@@ -148,8 +148,8 @@ namespace ProjetNihil
 			[[nodiscard]]
 			bool onBeforeCoreSecondaryServicesInitialization () noexcept override;
 
-			/** @copydoc EmEn::Core::onCoreStarted() */
-			bool onCoreStarted () noexcept override;
+			/** @copydoc EmEn::Core::onCoreStarted(const EmEn::Arguments &, EmEn::Settings &) */
+			bool onCoreStarted (const EmEn::Arguments & arguments, EmEn::Settings & settings) noexcept override;
 
 			/** @copydoc EmEn::Core::onCoreProcessLogics() */
 			void onCoreProcessLogics (size_t engineCycle) noexcept override;
