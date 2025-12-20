@@ -31,14 +31,16 @@
 #include "Animations/Sequence.hpp"
 #include "Graphics/Geometry/ResourceGenerator.hpp"
 #include "Graphics/Renderable/SkyBoxResource.hpp"
-#include "Graphics/Renderable/BasicFloorResource.hpp"
+#include "Graphics/Renderable/BasicGroundResource.hpp"
 #include "Graphics/Renderable/SimpleMeshResource.hpp"
+#include "Graphics/TextureResource/Texture2D.hpp"
 #include "Scenes/Component/Camera.hpp"
 
 namespace ProjetNihil
 {
 	using namespace EmEn;
 	using namespace EmEn::Libs;
+	using namespace EmEn::Libs::PixelFactory;
 	using namespace EmEn::Graphics;
 	using namespace EmEn::Scenes;
 
@@ -81,32 +83,38 @@ namespace ProjetNihil
 		 * ===================================================================== */
 
 		/* NOTE: The resource manager is provided by Core and gave access to textures, mesh, etc. */
-		auto & resourceManager = this->resourceManager();
+		auto & resources = this->resourceManager();
 
 		/* NOTE: Get the default skybox. */
-		const auto defaultSkyBox = resourceManager.container< Renderable::SkyBoxResource >()->getDefaultResource();
+		const auto defaultSkyBox = resources.container< Renderable::SkyBoxResource >()->getDefaultResource();
 
 		/* NOTE: Get the default scene area (ground). */
-		//const auto defaultSceneArea = resourceManager.container< Renderable::BasicFloorResource >()->getDefaultResource();
+		//const auto defaultSceneArea = resources.container< Renderable::BasicGroundResource >()->getDefaultResource();
 
 		/* NOTE: Create a ground modified with the perlin noise algorithm. */
-		const auto defaultSceneArea = resourceManager.container< Renderable::BasicFloorResource >()
-			->getOrCreateResource("TheSceneArea", [&resourceManager] (Renderable::BasicFloorResource & newResource) {
-				constexpr auto Boundary{4096.0F};
-				const auto materialResource = resourceManager.container< Material::BasicResource >()->getDefaultResource();
+		const auto defaultSceneArea = resources.container< Renderable::BasicGroundResource >()
+			->getOrCreateResource("DemoBasicGround", [&resources] (Renderable::BasicGroundResource & newResource) {
+				const auto materialResource = resources.container< Material::BasicResource >()
+					->getOrCreateResource("DemoBasicGroundMaterial", [] (Material::BasicResource & newMaterial) {
+						return newMaterial.load(
+							{0.61F, 0.55F, 0.38F, 1.0F},
+							{0.33F, 0.66F, 0.0F, 1.0F},
+							32.0F
+						);
+					});
 
-				if ( !newResource.loadPerlinNoise(Boundary, 0.0F, 256, 10.0F, 200.0F, materialResource, 1.0F) )
-				{
-					return false;
-				}
-
-				return true;
+				return newResource.loadDiamondSquare(
+					Physics::SI::kilometers(8.196F),
+					1024,
+					materialResource,
+					{512.0F, 0.5F}
+				);
 			});
 
 		/* NOTE: Create the new scene. */
 		const auto newScene = this->sceneManager().newScene(
 			"EmptyScene",
-			1000.0F,
+			Physics::SI::kilometers(1.0F),
 			defaultSkyBox,
 			defaultSceneArea,
 			nullptr
@@ -146,7 +154,7 @@ namespace ProjetNihil
 
 				interpolation->play();
 
-				sceneNode->addAnimation(Scenes::Node::WorldPosition, interpolation);
+				sceneNode->addAnimation(Node::WorldPosition, interpolation);
 			}
 
 			m_cameraNode = sceneNode;
@@ -158,8 +166,8 @@ namespace ProjetNihil
 			TraceInfo{ClassId} << "Using static lighting ...";
 
 			auto & staticLighting = newScene->lightSet().enableAsStaticLighting();
-			staticLighting.setAmbientParameters(PixelFactory::DarkBlue, 0.15F);
-			staticLighting.setLightParameters(PixelFactory::DarkYellow, 1.5F);
+			staticLighting.setAmbientParameters(DarkBlue, 0.15F);
+			staticLighting.setLightParameters(DarkYellow, 1.5F);
 			staticLighting.setAsDirectionalLight({-750.0F, -1000.0F, 250.0F});
 		}
 		else
@@ -167,9 +175,10 @@ namespace ProjetNihil
 			TraceInfo{ClassId} << "Using dynamic lighting ...";
 
 			const auto sceneNode = newScene->root()->createChild("TheSunNode", Math::CartesianFrame{-750.0F, -1000.0F, 250.0F});
+
 			sceneNode->componentBuilder< Component::DirectionalLight >("TheSun")
 				.setup([] (auto & component) {
-					component.setColor(PixelFactory::White);
+					component.setColor(White);
 					component.setIntensity(1.2F);
 				}).build();
 
@@ -178,30 +187,30 @@ namespace ProjetNihil
 
 		/* NOTE: Create a cube. */
 		{
-			const auto cubeResource = resourceManager.container< Renderable::SimpleMeshResource >()->getOrCreateResource("TheCubeMesh", [&resourceManager] (Renderable::SimpleMeshResource & newMesh) {
-				const Geometry::ResourceGenerator generator{resourceManager, Geometry::EnableNormal | Geometry::EnableVertexColor};
+			const auto cubeResource = resources.container< Renderable::SimpleMeshResource >()
+				->getOrCreateResource("TheCubeMesh", [&resources] (Renderable::SimpleMeshResource & newMesh) {
+					const Geometry::ResourceGenerator generator{resources, Geometry::EnableNormal | Geometry::EnablePrimaryTextureCoordinates};
 
-				const auto geometryResource = generator.cube(100.0F, "TheCubeGeometry");
+					const auto materialResource = resources.container< Material::BasicResource >()
+						->getOrCreateResource("TheCubeMaterial", [&resources] (Material::BasicResource & newMaterial) {
+							newMaterial.setTexture(resources.container< TextureResource::Texture2D >()->getDefaultResource());
+							newMaterial.setSpecularComponent(White, 128.0F);
 
-				if ( geometryResource == nullptr )
-				{
-					return false;
-				}
+							return newMaterial.setManualLoadSuccess(true);
+						});
 
-				const auto materialResource = resourceManager.container< Material::BasicResource >()->getDefaultResource();
-
-				if ( materialResource == nullptr )
-				{
-					return false;
-				}
-
-				return newMesh.load(geometryResource, materialResource);
-		   });
+					return newMesh.load(
+						generator.cube(100.0F, "TheCubeGeometry"),
+						materialResource//resources.container< Material::BasicResource >()->getDefaultResource()
+					);
+			   });
 
 			const auto sceneNode = newScene->root()->createChild("TheCubeNode", Math::CartesianFrame{0.0F, -75.0F, 0.0F});
-			sceneNode->componentBuilder< Component::Visual >("TheCube").setup([] (auto & component) {
-				component.getRenderableInstance()->enableLighting();
-			}).build(cubeResource);
+
+			sceneNode->componentBuilder< Component::Visual >("TheCube")
+				.setup([] (auto & component) {
+					component.getRenderableInstance()->enableLighting();
+				}).build(cubeResource);
 
 			m_cubeNode = sceneNode;
 		}

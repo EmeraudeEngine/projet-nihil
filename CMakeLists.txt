@@ -42,7 +42,7 @@ endif ()
 # Declare project and options.
 project(
 	projet-nihil
-	VERSION 1.2.0
+	VERSION 1.2.1
 	DESCRIPTION "Projet-Nihil is a starting point to use Emeraude-Engine."
 	HOMEPAGE_URL "https://github.com/EmeraudeEngine/projet-nihil"
 	LANGUAGES C CXX
@@ -117,6 +117,11 @@ elseif ( MSVC )
 		# Set /MT for Release or /MDd for Debug to compiler flags (Mixed behavior).
 		set(CMAKE_MSVC_RUNTIME_LIBRARY "$<IF:$<CONFIG:Debug>,MultiThreadedDebugDLL,MultiThreaded>")
 	endif ()
+
+	# Remove default MSVC flags added by CMake to avoid D9025 warnings
+	# These options are controlled by Emeraude's EMERAUDE_COMPILE_OPTIONS
+	string(REPLACE "/EHsc" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+	string(REPLACE "/Ob2" "" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
 endif ()
 
 
@@ -172,120 +177,35 @@ if ( MSVC )
 	message("[ProjetNihil] Configuring C++ compiler (>= MSVC 2022) for Windows ...")
 
 	add_executable(${PROJECT_NAME} WIN32 ${MAIN_HEADER_FILES} ${MAIN_SOURCE_FILES})
+elseif ( APPLE )
+	message("[ProjetNihil] Configuring C++ compiler (>= AppleClang 17.0) for macOS ...")
 
-	set_target_properties(${PROJECT_NAME} PROPERTIES
-		C_STANDARD 17 # Next standard will be C23
-		C_STANDARD_REQUIRED On
-		C_EXTENSIONS Off
-		CXX_STANDARD 20 # Next standard will be C++23, then C++26.
-		CXX_STANDARD_REQUIRED On
-		CXX_EXTENSIONS Off
-	)
-
-	target_compile_options(${PROJECT_NAME} PRIVATE
-		/wd4100       # Ignore "unreferenced formal parameter" warning
-		/wd4127       # Ignore "conditional expression is constant" warning
-		/wd4244       # Ignore "conversion possible loss of data" warning
-		/wd4324       # Ignore "structure was padded due to alignment specifier" warning
-		/wd4481       # Ignore "nonstandard extension used: override" warning
-		/wd4512       # Ignore "assignment operator could not be generated" warning
-		/wd4701       # Ignore "potentially uninitialized local variable" warning
-		/wd4702       # Ignore "unreachable code" warning
-		/wd4996       # Ignore "function or variable may be unsafe" warning
-		/MP${CMAKE_BUILD_PARALLEL_LEVEL} # Multiprocess compilation
-		/Gy           # Enable function-level linking
-		/EHsc		  # Enable exceptions
-		/W4           # Warning level 4
-		$<$<CONFIG:Debug>:-DDEBUG
-			/RTC1         # Disable optimizations
-			/Od           # Enable basic run-time checks
-			/WX           # Treat warnings as errors
-			/Zi
-		>
-		$<$<CONFIG:Relase>:-DNDEBUG
-			/O2           # Optimize for maximum speed
-			/Ob2          # Inline any suitable function
-			/GF           # Enable string pooling
-		>
-	)
-elseif ( UNIX )
 	add_executable(${PROJECT_NAME} ${MAIN_HEADER_FILES} ${MAIN_SOURCE_FILES})
+elseif ( UNIX )
+	message("[ProjetNihil] Configuring C++ compiler (>= G++13.3) for Linux ...")
 
-	if ( APPLE )
-		message("[ProjetNihil] Configuring C++ compiler (>= AppleClang 17.0) for macOS ...")
-
-		set_target_properties(${PROJECT_NAME} PROPERTIES
-			C_STANDARD 17 # Next standard will be C23
-			C_STANDARD_REQUIRED On
-			C_EXTENSIONS Off
-			CXX_STANDARD 20 # Next standard will be C++23, then C++26.
-			CXX_STANDARD_REQUIRED On
-			CXX_EXTENSIONS Off
-		)
-
-		target_compile_options(${PROJECT_NAME} PRIVATE
-			-Wno-unknown-pragmas
-			-Wno-unused
-			-fno-exceptions
-			-Wno-nullability-extension # Removes warnings from external dependencies libzip.
-			$<$<CONFIG:Debug>:
-				-O0
-				-g
-				-Wall
-				-Wextra
-				-Wpedantic
-				-Werror
-			>
-			$<$<CONFIG:Relase>:
-				-O2
-				-ffast-math
-				-fdata-sections
-				-ffunction-sections
-			>
-		)
-	else ()
-		message("[ProjetNihil] Configuring C++ compiler (>= G++13.3) for Linux ...")
-
-		set_target_properties(${PROJECT_NAME} PROPERTIES
-			C_STANDARD 17 # Next standard will be C23
-			C_STANDARD_REQUIRED On
-			C_EXTENSIONS On
-			CXX_STANDARD 20 # Next standard will be C++23, then C++26.
-			CXX_STANDARD_REQUIRED On
-			CXX_EXTENSIONS On
-		)
-
-		target_compile_options(${PROJECT_NAME} PRIVATE
-			-Wno-unknown-pragmas
-			-Wno-unused
-			-fno-exceptions
-			$<$<CONFIG:Debug>:
-				-DDEBUG
-				-O0
-				-g
-				-Wall
-				-Wextra
-				-Wpedantic
-				-Werror
-			>
-			$<$<CONFIG:Relase>:
-				-DNDEBUG
-				-O2
-				-ffast-math
-				-fdata-sections
-				-ffunction-sections
-			>
-		)
-	endif ()
+	add_executable(${PROJECT_NAME} ${MAIN_HEADER_FILES} ${MAIN_SOURCE_FILES})
 else ()
 	message(FATAL_ERROR "[ProjetNihil] Unsupported platform!")
 endif ()
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:DEBUG>)
-target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:NDEBUG>)
+set_target_properties(${PROJECT_NAME} PROPERTIES
+	C_STANDARD 17
+	C_STANDARD_REQUIRED On
+	C_EXTENSIONS Off
+	CXX_STANDARD 20
+	CXX_STANDARD_REQUIRED On
+	CXX_EXTENSIONS Off
+)
 
-target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR})
-target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR}/include)
+target_compile_definitions(${PROJECT_NAME} PRIVATE ${EMERAUDE_COMPILE_DEFINITIONS})
+
+target_compile_options(${PROJECT_NAME} PRIVATE ${EMERAUDE_COMPILE_OPTIONS})
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+	${PROJECT_SOURCE_DIR}
+	${CMAKE_BINARY_DIR}/include
+)
 
 
 
