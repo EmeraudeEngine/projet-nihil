@@ -89,6 +89,8 @@ Extract the archive into `./dependencies/emeraude-engine/dependencies/`:
 └── windows.x86_64.Debug-MD/
 ```
 
+*Note*: If you want to compile external dependencies manually, you can use : https://github.com/EmeraudeEngine/ext-deps-generator
+
 ### Step 4: Configure and Build
 
 **Using an IDE (CLion, Visual Studio, VSCode):**
