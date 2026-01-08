@@ -42,7 +42,7 @@ endif ()
 # Declare project and options.
 project(
 	projet-nihil
-	VERSION 1.2.1
+	VERSION 1.3.0
 	DESCRIPTION "Projet-Nihil is a starting point to use Emeraude-Engine."
 	HOMEPAGE_URL "https://github.com/EmeraudeEngine/projet-nihil"
 	LANGUAGES C CXX
@@ -200,7 +200,11 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE ${EMERAUDE_COMPILE_DEFINITIONS})
 
+message("[ProjetNihil] '${PROJECT_NAME}' will be compiled with definitions: ${EMERAUDE_COMPILE_DEFINITIONS}")
+
 target_compile_options(${PROJECT_NAME} PRIVATE ${EMERAUDE_COMPILE_OPTIONS})
+
+message("[ProjetNihil] '${PROJECT_NAME}' will be compiled with flags: ${EMERAUDE_COMPILE_OPTIONS}")
 
 target_include_directories(${PROJECT_NAME} PRIVATE
 	${PROJECT_SOURCE_DIR}
