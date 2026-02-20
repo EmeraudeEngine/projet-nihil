@@ -167,5 +167,6 @@ namespace ProjetNihil
 			std::weak_ptr< EmEn::Scenes::StaticEntity > m_rubySphere;
 			std::weak_ptr< EmEn::Scenes::StaticEntity > m_sapphireSphere;
 			bool m_useStaticLighting{DefaultUseStaticLighting};
+			bool m_postProcessingEnabled{false};
 	};
 }

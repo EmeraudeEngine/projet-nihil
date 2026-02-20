@@ -41,6 +41,13 @@
 #include "Graphics/TextureResource/Texture2D.hpp"
 #include "Scenes/Component/Camera.hpp"
 #include "Scenes/Toolkit.hpp"
+#include "Graphics/Effects/Lens/ChromaticAberration.hpp"
+#include "Graphics/Effects/Lens/ColorGrading.hpp"
+#include "Graphics/Effects/Lens/Vignetting.hpp"
+#include "Graphics/Effects/Lens/FilmGrain.hpp"
+#include "Graphics/Effects/Framebuffer/Bloom.hpp"
+#include "Graphics/Effects/Framebuffer/VolumetricLight.hpp"
+#include "Graphics/PostProcessStack.hpp"
 #include "Audio/MusicResource.hpp"
 
 namespace ProjetNihil
@@ -56,6 +63,7 @@ namespace ProjetNihil
 	{
 		/* Register shortcuts. */
 		m_applicationHelp.registerShortcut("Show an informative dialog box.", Input::Key::KeyF1);
+		m_applicationHelp.registerShortcut("Toggle post-processing effects.", Input::Key::KeySpace);
 	}
 
 #if IS_WINDOWS
@@ -64,6 +72,7 @@ namespace ProjetNihil
 	{
 		/* Register shortcuts. */
 		m_applicationHelp.registerShortcut("Show an informative dialog box.", Input::Key::KeyF1);
+		m_applicationHelp.registerShortcut("Toggle post-processing effects.", Input::Key::KeySpace);
 	}
 #endif
 
@@ -261,26 +270,26 @@ namespace ProjetNihil
 		/* NOTE: Create a cube with a porcelain material. */
 		{
 			const auto cubeResource = resources.container< Renderable::SimpleMeshResource >()
-				->getOrCreateResource("TheCubeMesh", [&resources] (Renderable::SimpleMeshResource & newMesh) {
+				->getOrCreateResource("TheCubeMesh", [&resources] (Renderable::SimpleMeshResource & meshResource) {
 					const Geometry::ResourceGenerator generator{resources, Geometry::EnableTangentSpace | Geometry::EnablePrimaryTextureCoordinates};
 
-					const auto materialResource = resources.container< Material::PBRResource >()
-						->getOrCreateResource("TheCubeMaterial", [] (auto & newMaterial) {
+					const auto material = resources.container< Material::PBRResource >()
+						->getOrCreateResource("TheCubeMaterial", [] (auto & materialResource) {
 							/* Glazed porcelain. */
-							newMaterial.setAlbedoComponent({0.95F, 0.93F, 0.88F, 1.0F});
-							newMaterial.setRoughnessComponent(0.08F);
-							newMaterial.setMetalnessComponent(0.0F);
-							newMaterial.setReflectionComponentFromEnvironmentCubemap(1.0F);
-							newMaterial.setClearCoatComponent(1.0F, 0.02F);
-							newMaterial.setSubsurfaceComponent(0.4F, 1.0F, {0.95F, 0.90F, 0.85F, 1.0F});
-							newMaterial.setSpecularComponent(1.5F, {1.0F, 0.98F, 0.95F, 1.0F});
+							materialResource.setAlbedoComponent({0.95F, 0.93F, 0.88F, 1.0F});
+							materialResource.setRoughnessComponent(0.08F);
+							materialResource.setMetalnessComponent(0.0F);
+							materialResource.setReflectionComponentFromEnvironmentCubemap(1.0F);
+							materialResource.setClearCoatComponent(1.0F, 0.02F);
+							materialResource.setSubsurfaceComponent(0.4F, 1.0F, {0.95F, 0.90F, 0.85F, 1.0F});
+							materialResource.setSpecularComponent(1.5F, {1.0F, 0.98F, 0.95F, 1.0F});
 
-							return newMaterial.setManualLoadSuccess(true);
+							return materialResource.setManualLoadSuccess(true);
 						});
 
-					return newMesh.load(
+					return meshResource.load(
 						generator.cube(100.0F, "TheCubeGeometry"),
-						materialResource
+						material
 					);
 			   });
 
@@ -298,79 +307,89 @@ namespace ProjetNihil
 		{
 			/* Gold sphere - polished brushed metal. */
 			const auto goldMaterial = resources.container< Material::PBRResource >()
-				->getOrCreateResource("GoldMaterial", [] (auto & mat) {
-					mat.setAlbedoComponent({1.0F, 0.86F, 0.57F, 1.0F});
-					mat.setRoughnessComponent(0.2F);
-					mat.setMetalnessComponent(1.0F);
-					mat.setReflectionComponentFromEnvironmentCubemap(1.0F);
-					mat.setAnisotropyComponent(0.3F);
-					return mat.setManualLoadSuccess(true);
+				->getOrCreateResource("GoldMaterial", [] (auto & materialResource) {
+					materialResource.setAlbedoComponent({1.0F, 0.86F, 0.57F, 1.0F});
+					materialResource.setRoughnessComponent(0.2F);
+					materialResource.setMetalnessComponent(1.0F);
+					materialResource.setReflectionComponentFromEnvironmentCubemap(1.0F);
+					materialResource.setAnisotropyComponent(0.3F);
+
+					return materialResource.setManualLoadSuccess(true);
 				});
 
 			toolkit.setCursor(200.0F, -75.0F, 200.0F);
+
 			m_goldSphere = toolkit.generateSphereInstance("GoldSphere", 35.0F, goldMaterial, false, true, 64).entity();
 
 			/* Chrome sphere - perfect mirror. */
 			const auto chromeMaterial = resources.container< Material::PBRResource >()
-				->getOrCreateResource("ChromeMaterial", [] (auto & mat) {
-					mat.setAlbedoComponent({0.95F, 0.95F, 0.95F, 1.0F});
-					mat.setRoughnessComponent(0.02F);
-					mat.setMetalnessComponent(1.0F);
-					mat.setReflectionComponentFromEnvironmentCubemap(1.0F);
-					return mat.setManualLoadSuccess(true);
+				->getOrCreateResource("ChromeMaterial", [] (auto & materialResource) {
+					materialResource.setAlbedoComponent({0.95F, 0.95F, 0.95F, 1.0F});
+					materialResource.setRoughnessComponent(0.02F);
+					materialResource.setMetalnessComponent(1.0F);
+					materialResource.setReflectionComponentFromEnvironmentCubemap(1.0F);
+
+					return materialResource.setManualLoadSuccess(true);
 				});
 
 			toolkit.setCursor(-200.0F, -75.0F, 200.0F);
+
 			m_chromeSphere = toolkit.generateSphereInstance("ChromeSphere", 35.0F, chromeMaterial, false, true, 64).entity();
 
 			/* Ruby sphere - translucent gemstone with subsurface scattering. */
 			const auto rubyMaterial = resources.container< Material::PBRResource >()
-				->getOrCreateResource("RubyMaterial", [] (auto & mat) {
-					mat.setAlbedoComponent({0.6F, 0.02F, 0.02F, 1.0F});
-					mat.setRoughnessComponent(0.05F);
-					mat.setMetalnessComponent(0.0F);
-					mat.setReflectionComponentFromEnvironmentCubemap(1.0F);
-					mat.setClearCoatComponent(1.0F, 0.01F);
-					mat.setSubsurfaceComponent(0.5F, 0.8F, {0.8F, 0.1F, 0.1F, 1.0F});
-					return mat.setManualLoadSuccess(true);
+				->getOrCreateResource("RubyMaterial", [] (auto & materialResource) {
+					materialResource.setAlbedoComponent({0.6F, 0.02F, 0.02F, 1.0F});
+					materialResource.setRoughnessComponent(0.05F);
+					materialResource.setMetalnessComponent(0.0F);
+					materialResource.setReflectionComponentFromEnvironmentCubemap(1.0F);
+					materialResource.setClearCoatComponent(1.0F, 0.01F);
+					materialResource.setSubsurfaceComponent(0.5F, 0.8F, {0.8F, 0.1F, 0.1F, 1.0F});
+
+					return materialResource.setManualLoadSuccess(true);
 				});
 
 			toolkit.setCursor(200.0F, -75.0F, -200.0F);
+
 			m_rubySphere = toolkit.generateSphereInstance("RubySphere", 35.0F, rubyMaterial, false, true, 64).entity();
 
 			/* Sapphire sphere - iridescent gemstone. */
 			const auto sapphireMaterial = resources.container< Material::PBRResource >()
-				->getOrCreateResource("SapphireMaterial", [] (auto & mat) {
-					mat.setAlbedoComponent({0.02F, 0.05F, 0.4F, 1.0F});
-					mat.setRoughnessComponent(0.05F);
-					mat.setMetalnessComponent(0.0F);
-					mat.setReflectionComponentFromEnvironmentCubemap(1.0F);
-					mat.setClearCoatComponent(1.0F, 0.01F);
-					mat.setIridescenceComponent(0.3F, 1.5F, 200.0F, 400.0F);
-					return mat.setManualLoadSuccess(true);
+				->getOrCreateResource("SapphireMaterial", [] (auto & materialResource) {
+					materialResource.setAlbedoComponent({0.02F, 0.05F, 0.4F, 1.0F});
+					materialResource.setRoughnessComponent(0.05F);
+					materialResource.setMetalnessComponent(0.0F);
+					materialResource.setReflectionComponentFromEnvironmentCubemap(1.0F);
+					materialResource.setClearCoatComponent(1.0F, 0.01F);
+					materialResource.setIridescenceComponent(0.3F, 1.5F, 200.0F, 400.0F);
+
+					return materialResource.setManualLoadSuccess(true);
 				});
 
 			toolkit.setCursor(-200.0F, -75.0F, -200.0F);
+
 			m_sapphireSphere = toolkit.generateSphereInstance("SapphireSphere", 35.0F, sapphireMaterial, false, true, 64).entity();
 		}
 
 		/* NOTE: Create a floating torus with an iridescent material (Toolkit + custom geometry). */
 		{
 			const auto torusMaterial = resources.container< Material::PBRResource >()
-				->getOrCreateResource("TorusMaterial", [] (auto & mat) {
-					mat.setAlbedoComponent({0.02F, 0.02F, 0.03F, 1.0F});
-					mat.setRoughnessComponent(0.05F);
-					mat.setMetalnessComponent(0.0F);
-					mat.setReflectionComponentFromEnvironmentCubemap(1.0F);
-					mat.setIridescenceComponent(0.8F, 2.0F, 100.0F, 500.0F);
-					mat.setClearCoatComponent(1.0F, 0.01F);
-					mat.setSpecularComponent(2.0F, {0.9F, 0.9F, 1.0F, 1.0F});
-					return mat.setManualLoadSuccess(true);
+				->getOrCreateResource("TorusMaterial", [] (auto & materialResource) {
+					materialResource.setAlbedoComponent({0.02F, 0.02F, 0.03F, 1.0F});
+					materialResource.setRoughnessComponent(0.05F);
+					materialResource.setMetalnessComponent(0.0F);
+					materialResource.setReflectionComponentFromEnvironmentCubemap(1.0F);
+					materialResource.setIridescenceComponent(0.8F, 2.0F, 100.0F, 500.0F);
+					materialResource.setClearCoatComponent(1.0F, 0.01F);
+					materialResource.setSpecularComponent(2.0F, {0.9F, 0.9F, 1.0F, 1.0F});
+
+					return materialResource.setManualLoadSuccess(true);
 				});
 
 			const Geometry::ResourceGenerator generator{resources, Geometry::EnableTangentSpace | Geometry::EnablePrimaryTextureCoordinates};
 
 			toolkit.setCursor(0.0F, -200.0F, 0.0F);
+
 			const auto torusEntity = toolkit.generateRenderableInstance< Node >(
 				"TheTorus",
 				generator.torus(60.0F, 12.0F, 64, 32, "TorusGeometry"),
@@ -388,6 +407,85 @@ namespace ProjetNihil
 			trackMixer.addToPlaylist(music);
 			trackMixer.setVolume(0.5F);
 			trackMixer.play();
+		}
+
+		/* NOTE: Configure subtle post-processing effects. */
+		{
+			auto & renderer = this->graphicsRenderer();
+
+			/* Multi-pass effects → PostProcessStack owned by Scene. */
+			{
+				const auto & windowState = this->window().state();
+
+				auto stack = std::make_unique< PostProcessStack >();
+
+				/* HDR Bloom (Dual Kawase). */
+				auto bloom = std::make_shared< Effects::Framebuffer::Bloom >();
+				bloom->setParameters({
+					.threshold = 0.85F,
+					.softKnee = 0.5F,
+					.intensity = 0.6F,
+					.spread = 1.0F
+				});
+
+				stack->addEffect(std::move(bloom));
+
+				/* Volumetric light (God Rays) matching the sun direction. */
+				auto godRays = std::make_shared< Effects::Framebuffer::VolumetricLight >();
+				godRays->setLightDirection(-750.0F, -1000.0F, 250.0F);
+				godRays->setLightColor(1.0F, 0.95F, 0.85F);
+				godRays->setLightIntensity(1.0F);
+				godRays->setParameters({
+					.density = 0.8F,
+					.decay = 0.98F,
+					.exposure = 0.15F,
+					.numSamples = 64,
+					.depthThreshold = 0.9999F
+				});
+
+				stack->addEffect(std::move(godRays));
+
+				if ( !stack->createAll(renderer, windowState.framebufferWidth, windowState.framebufferHeight) )
+				{
+					TraceError{ClassId} << "Unable to create the post-process stack!";
+				}
+
+				newScene->setPostProcessStack(std::move(stack));
+			}
+
+			/* Single-pass lens effects → Camera. */
+			if ( const auto cameraNode = m_cameraNode.lock() )
+			{
+				if ( const auto camera = cameraNode->getComponent< Component::Camera >("TheCamera") )
+				{
+					/* Subtle radial chromatic aberration (lens fringing). */
+					auto chromaticAberration = std::make_shared< Effects::Lens::ChromaticAberration >(0.003F);
+					chromaticAberration->enableRadial(true);
+					camera->addLensEffect(chromaticAberration);
+
+					/* Gentle warm color grading. */
+					auto colorGrading = std::make_shared< Effects::Lens::ColorGrading >();
+					colorGrading->setSaturation(1.1F);
+					colorGrading->setHue(0.06F);
+					colorGrading->setContrast(1.1F);
+					colorGrading->setBrightness(0.02F);
+					colorGrading->setGamma(1.05F);
+					camera->addLensEffect(colorGrading);
+
+					/* Light cinematic vignetting. */
+					auto vignetting = std::make_shared< Effects::Lens::Vignetting >(0.4F);
+					vignetting->setRadius(0.45F);
+					vignetting->setSoftness(0.55F);
+					camera->addLensEffect(vignetting);
+
+					/* Barely perceptible film grain. */
+					auto filmGrain = std::make_shared< Effects::Lens::FilmGrain >(0.05F);
+					filmGrain->setSize(1.0F);
+					camera->addLensEffect(filmGrain);
+				}
+			}
+
+			renderer.postProcessor().enable(false);
 		}
 
 		/* NOTE: Enable the new scene. */
@@ -417,7 +515,13 @@ namespace ProjetNihil
 		{
 			const auto time = static_cast< float >(engineCycle) * EngineUpdateCycleDurationS< float >;
 
-			struct BobParams { float period; float amplitude; float phaseOffset; float baseY; };
+			struct BobParams {
+				float period;
+				float amplitude;
+				float phaseOffset;
+				float baseY;
+			};
+
 			constexpr std::array< BobParams, 4 > bobbing{{
 				{5.0F,  25.0F, 0.0F,            -75.0F},  /* Gold: slow, large. */
 				{3.5F,  18.0F, 1.5707963F,      -75.0F},  /* Chrome: medium, offset pi/2. */
@@ -429,6 +533,7 @@ namespace ProjetNihil
 				if ( const auto sphere = weakSphere.lock() )
 				{
 					const auto y = params.baseY + params.amplitude * std::sin(2.0F * std::numbers::pi_v< float > * time / params.period + params.phaseOffset);
+
 					sphere->setYPosition(y, Math::TransformSpace::World);
 				}
 			};
@@ -470,6 +575,17 @@ namespace ProjetNihil
 			dialog.execute(&this->window());
 
 			/* NOTE: Tells Core we consumed the event. */
+			return true;
+		}
+
+		if ( key == Input::Key::KeySpace )
+		{
+			m_postProcessingEnabled = !m_postProcessingEnabled;
+
+			this->graphicsRenderer().postProcessor().enable(m_postProcessingEnabled);
+
+			TraceInfo{ClassId} << "Post-processing " << (m_postProcessingEnabled ? "enabled" : "disabled") << ".";
+
 			return true;
 		}
 
