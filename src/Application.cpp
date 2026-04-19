@@ -56,6 +56,7 @@ namespace ProjetNihil
 	using namespace EmEn::Libs;
 	using namespace EmEn::Libs::PixelFactory;
 	using namespace EmEn::Graphics;
+	using namespace EmEn::Graphics::Effects;
 	using namespace EmEn::Scenes;
 
 	Application::Application (int argc, char * * argv) noexcept
@@ -420,32 +421,23 @@ namespace ProjetNihil
 				auto stack = std::make_unique< PostProcessStack >();
 
 				/* HDR Bloom (Dual Kawase). */
-				auto bloom = std::make_shared< Effects::Framebuffer::Bloom >();
-				bloom->setParameters({
+				stack->addEffect(std::make_shared< Framebuffer::Bloom >(renderer, Framebuffer::Bloom::Parameters{
 					.threshold = 0.85F,
 					.softKnee = 0.5F,
 					.intensity = 0.6F,
 					.spread = 1.0F
-				});
-
-				stack->addEffect(std::move(bloom));
+				}));
 
 				/* Volumetric light (God Rays) matching the sun direction. */
-				auto godRays = std::make_shared< Effects::Framebuffer::VolumetricLight >();
-				godRays->setLightDirection(-750.0F, -1000.0F, 250.0F);
-				godRays->setLightColor(1.0F, 0.95F, 0.85F);
-				godRays->setLightIntensity(1.0F);
-				godRays->setParameters({
+				stack->addEffect(std::make_shared< Framebuffer::VolumetricLight >(renderer, Framebuffer::VolumetricLight::Parameters{
 					.density = 0.8F,
 					.decay = 0.98F,
 					.exposure = 0.15F,
 					.numSamples = 64,
 					.depthThreshold = 0.9999F
-				});
+				}));
 
-				stack->addEffect(std::move(godRays));
-
-				if ( !stack->createAll(renderer, windowState.framebufferWidth, windowState.framebufferHeight) )
+				if ( !stack->createAll(windowState.framebufferWidth, windowState.framebufferHeight) )
 				{
 					TraceError{ClassId} << "Unable to create the post-process stack!";
 				}
@@ -459,12 +451,12 @@ namespace ProjetNihil
 				if ( const auto camera = cameraNode->getComponent< Component::Camera >("TheCamera") )
 				{
 					/* Subtle radial chromatic aberration (lens fringing). */
-					auto chromaticAberration = std::make_shared< Effects::Lens::ChromaticAberration >(0.003F);
+					auto chromaticAberration = std::make_shared< Lens::ChromaticAberration >(0.003F);
 					chromaticAberration->enableRadial(true);
 					camera->addLensEffect(chromaticAberration);
 
 					/* Gentle warm color grading. */
-					auto colorGrading = std::make_shared< Effects::Lens::ColorGrading >();
+					auto colorGrading = std::make_shared< Lens::ColorGrading >();
 					colorGrading->setSaturation(1.1F);
 					colorGrading->setHue(0.06F);
 					colorGrading->setContrast(1.1F);
@@ -473,13 +465,13 @@ namespace ProjetNihil
 					camera->addLensEffect(colorGrading);
 
 					/* Light cinematic vignetting. */
-					auto vignetting = std::make_shared< Effects::Lens::Vignetting >(0.4F);
+					auto vignetting = std::make_shared< Lens::Vignetting >(0.4F);
 					vignetting->setRadius(0.45F);
 					vignetting->setSoftness(0.55F);
 					camera->addLensEffect(vignetting);
 
 					/* Barely perceptible film grain. */
-					auto filmGrain = std::make_shared< Effects::Lens::FilmGrain >(0.05F);
+					auto filmGrain = std::make_shared< Lens::FilmGrain >(0.05F);
 					filmGrain->setSize(1.0F);
 					camera->addLensEffect(filmGrain);
 				}
@@ -572,7 +564,7 @@ namespace ProjetNihil
 				Dialog::MessageType::Info
 			};
 
-			dialog.execute(&this->window());
+			dialog.execute(this->window());
 
 			/* NOTE: Tells Core we consumed the event. */
 			return true;
