@@ -42,16 +42,5 @@ main (int argc, char * argv[])
 		return EXIT_SUCCESS;
 	}
 
-	std::cout << "[BOOT:LINUX] Running the main process ..." "\n";
-
-	if ( !application.run() )
-	{
-		std::cerr << "[BOOT:LINUX] Application terminated with errors !" "\n";
-
-		return EXIT_FAILURE;
-	}
-
-	std::cout << "[BOOT:LINUX] Application terminated successfully !" "\n";
-
-	return EXIT_SUCCESS;
+	return application.run();
 }

@@ -48,16 +48,5 @@ wWinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLine, int nSh
 		return EXIT_SUCCESS;
 	}
 
-	std::cout << "[BOOT:WINDOWS] Running the main process ..." "\n";
-
-	if ( !application.run() )
-	{
-		std::cerr << "[BOOT:WINDOWS] Application terminated with errors !" "\n";
-
-		return EXIT_FAILURE;
-	}
-
-	std::cout << "[BOOT:WINDOWS] Application terminated successfully !" "\n";
-
-	return EXIT_SUCCESS;
+	return application.run();
 }

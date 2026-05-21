@@ -102,10 +102,10 @@ namespace ProjetNihil
 			size_t
 			getClassUID () noexcept
 			{
-				return EmEn::Libs::Hash::FNV1a(ClassId);
+				return EmEn::Base::Hash::FNV1a(ClassId);
 			}
 
-			/** @copydoc EmEn::Libs::ObservableTrait::classUID() const */
+			/** @copydoc EmEn::Base::ObservableTrait::classUID() const */
 			[[nodiscard]]
 			size_t
 			classUID () const noexcept override
@@ -113,7 +113,7 @@ namespace ProjetNihil
 				return getClassUID();
 			}
 
-			/** @copydoc EmEn::Libs::ObservableTrait::is() const */
+			/** @copydoc EmEn::Base::ObservableTrait::is() const */
 			[[nodiscard]]
 			bool
 			is (size_t classUID) const noexcept override

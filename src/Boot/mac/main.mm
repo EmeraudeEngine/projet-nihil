@@ -42,16 +42,5 @@ main (int argc, char * argv[])
 		return EXIT_SUCCESS;
 	}
 
-	std::cout << "[BOOT:MACOS] Running the main process ..." "\n";
-
-	if ( !application.run() )
-	{
-		std::cerr << "[BOOT:MACOS] Application terminated with errors !" "\n";
-
-		return EXIT_FAILURE;
-	}
-
-	std::cout << "[BOOT:MACOS] Application terminated successfully !" "\n";
-
-	return EXIT_SUCCESS;
+	return application.run();
 }

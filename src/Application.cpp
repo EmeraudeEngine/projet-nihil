@@ -53,8 +53,8 @@
 namespace ProjetNihil
 {
 	using namespace EmEn;
-	using namespace EmEn::Libs;
-	using namespace EmEn::Libs::PixelFactory;
+	using namespace EmEn::Base;
+	using namespace EmEn::Base::PixelFactory;
 	using namespace EmEn::Graphics;
 	using namespace EmEn::Graphics::Effects;
 	using namespace EmEn::Scenes;
