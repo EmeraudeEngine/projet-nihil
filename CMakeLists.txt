@@ -10,8 +10,6 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/dependencies/emeraude-en
 
 message("[ProjetNihil] Using CMake ${CMAKE_VERSION}")
 
-
-
 #######################################################################
 # Configure the parallel job count
 cmake_host_system_information(RESULT DETECTED_JOB_COUNT QUERY NUMBER_OF_PHYSICAL_CORES)
@@ -20,8 +18,6 @@ set(JOB_COUNT ${DETECTED_JOB_COUNT} CACHE STRING "The number of job used for com
 set(CMAKE_BUILD_PARALLEL_LEVEL ${JOB_COUNT})
 
 message("[ProjetNihil] Job processes used : ${CMAKE_BUILD_PARALLEL_LEVEL}")
-
-
 
 #######################################################################
 # NOTE: This must be set before anything for macos x86_x64, to be sure all targets use the right platform and SDK.
@@ -42,7 +38,7 @@ endif ()
 # Declare project and options.
 project(
 	projet-nihil
-	VERSION 1.5
+	VERSION 1.5.1
 	DESCRIPTION "Projet-Nihil is a starting point to use Emeraude-Engine."
 	HOMEPAGE_URL "https://github.com/EmeraudeEngine/projet-nihil"
 	LANGUAGES C CXX
@@ -51,14 +47,28 @@ project(
 set(CMAKE_VERBOSE_MAKEFILE On)
 set(CMAKE_EXPORT_COMPILE_COMMANDS On)
 
+#######################################################################
+## Build type
+set(CMAKE_CONFIGURATION_TYPES Debug Release RelWithDebInfo MinSizeRel)
+
+if ( MSVC )
+	if ( MSVC_BUILD_TYPE )
+		set(CMAKE_BUILD_TYPE ${MSVC_BUILD_TYPE})
+	elseif ( NOT CMAKE_BUILD_TYPE )
+		message(FATAL_ERROR "[ProjetNihil] Set -DMSVC_BUILD_TYPE=Debug|Release|RelWithDebInfo|MinSizeRel on Windows.")
+	endif ()
+elseif ( NOT CMAKE_BUILD_TYPE )
+	set(CMAKE_BUILD_TYPE Release)
+endif ()
+
+message("[ProjetNihil] Build type : ${CMAKE_BUILD_TYPE}")
+
 # Configure output directory by compilation type.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
 
 set_property(GLOBAL PROPERTY USE_FOLDERS On)
-
-
 
 # Projet-Nihil application options.
 set(PROJECT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -124,13 +134,9 @@ elseif ( MSVC )
 	string(REPLACE "/Ob2" "" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
 endif ()
 
-
-
 #######################################################################
 # Configure prerequisites.
 include(InstallEmeraudeEngine)
-
-
 
 #######################################################################
 # Project header/sources files for main binary.
@@ -211,15 +217,11 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 	${CMAKE_BINARY_DIR}/include
 )
 
-
-
 #######################################################################
 # Configure dependencies
 
 # Configure "EmeraudeEngine" for the window management.
 include(SetupEmeraudeEngine)
-
-
 
 #######################################################################
 # Resources and configuration files
@@ -237,8 +239,6 @@ endif ()
 # Copy all application data files into the build directory.
 # NOTE: This is done once per cmake configuration.
 file(COPY ${CMAKE_SOURCE_DIR}/resources/data DESTINATION ${PROJECT_DATA_DIR})
-
-
 
 #######################################################################
 # Installing

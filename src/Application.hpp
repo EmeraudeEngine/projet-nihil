@@ -123,10 +123,10 @@ namespace ProjetNihil
 
 			/**
 			 * @brief Returns the reference to the application help service.
-			 * @return const EmEn::Help &
+			 * @return const EmEn::Help::Lexicon &
 			 */
 			[[nodiscard]]
-			const EmEn::Help &
+			const EmEn::Help::Lexicon &
 			help () const noexcept
 			{
 				return m_applicationHelp;
@@ -134,10 +134,10 @@ namespace ProjetNihil
 
 			/**
 			 * @brief Returns the reference to the application help service.
-			 * @return const Help &
+			 * @return EmEn::Help::Lexicon &
 			 */
 			[[nodiscard]]
-			EmEn::Help &
+			EmEn::Help::Lexicon &
 			applicationHelp () noexcept
 			{
 				return m_applicationHelp;
@@ -158,7 +158,7 @@ namespace ProjetNihil
 			/** @copydoc EmEn::Core::onCoreKeyRelease() */
 			bool onCoreKeyRelease (int32_t key, int32_t scancode, int32_t modifiers) noexcept override;
 
-			EmEn::Help m_applicationHelp{"Application"};
+			EmEn::Help::Lexicon m_applicationHelp{"Application"};
 			std::weak_ptr< EmEn::Scenes::Node > m_cameraNode;
 			std::weak_ptr< EmEn::Scenes::Node > m_cubeNode;
 			std::weak_ptr< EmEn::Scenes::Node > m_torusNode;

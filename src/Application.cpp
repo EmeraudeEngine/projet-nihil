@@ -37,7 +37,7 @@
 #include "Graphics/Geometry/ResourceGenerator.hpp"
 #include "Graphics/Renderable/SkyBoxResource.hpp"
 #include "Graphics/Renderable/BasicGroundResource.hpp"
-#include "Graphics/Renderable/SimpleMeshResource.hpp"
+#include "Graphics/Renderable/MeshResource.hpp"
 #include "Graphics/TextureResource/Texture2D.hpp"
 #include "Scenes/Component/Camera.hpp"
 #include "Scenes/Toolkit.hpp"
@@ -218,7 +218,7 @@ namespace ProjetNihil
 
 					const Math::Vector< 3, float > position{
 						orbitRadius * std::cos(angle),
-						orbitHeight + 50.0F * std::sin(angle * 3.0F),
+						orbitHeight + (50.0F * std::sin(angle * 3.0F)),
 						orbitRadius * std::sin(angle)
 					};
 
@@ -270,8 +270,8 @@ namespace ProjetNihil
 
 		/* NOTE: Create a cube with a porcelain material. */
 		{
-			const auto cubeResource = resources.container< Renderable::SimpleMeshResource >()
-				->getOrCreateResource("TheCubeMesh", [&resources] (Renderable::SimpleMeshResource & meshResource) {
+			const auto cubeResource = resources.container< Renderable::MeshResource >()
+				->getOrCreateResource("TheCubeMesh", [&resources] (Renderable::MeshResource & meshResource) {
 					const Geometry::ResourceGenerator generator{resources, Geometry::EnableTangentSpace | Geometry::EnablePrimaryTextureCoordinates};
 
 					const auto material = resources.container< Material::PBRResource >()
@@ -505,7 +505,7 @@ namespace ProjetNihil
 
 		/* NOTE: Bobbing spheres: each with different period, amplitude, and phase offset. */
 		{
-			const auto time = static_cast< float >(engineCycle) * EngineUpdateCycleDurationS< float >;
+			const auto time = static_cast< float >(engineCycle) * WorldPhysicsUpdateCycleDurationS< float >;
 
 			struct BobParams {
 				float period;
