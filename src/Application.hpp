@@ -29,10 +29,18 @@
 /* Project configuration. */
 #include "config.hpp"
 
+/* Standard inclusions. */
+#include <memory>
+#include <vector>
+
 /* Local inclusions for inheritances. */
 #include "Core.hpp"
 #include "Scenes/StaticEntity.hpp"
+
+/* Local inclusions. */
 #include "ApplicationSettingKeys.hpp"
+#include "Graphics/Effects/Framebuffer/VolumetricLight.hpp"
+#include "Graphics/DirectPostProcessEffect.hpp"
 
 namespace ProjetNihil
 {
@@ -158,6 +166,14 @@ namespace ProjetNihil
 			/** @copydoc EmEn::Core::onCoreKeyRelease() */
 			bool onCoreKeyRelease (int32_t key, int32_t scancode, int32_t modifiers) noexcept override;
 
+			/**
+			 * @brief Applies the current artistic effects state to the scene chain and the camera.
+			 * @note The tone mapping is NOT part of it: it is the sensor of the photographic
+			 * pipeline, not a creative effect. See onCoreStarted() for the whole rationale.
+			 * @return void
+			 */
+			void applyEffectsState () const noexcept;
+
 			EmEn::Help::Lexicon m_applicationHelp{"Application"};
 			std::weak_ptr< EmEn::Scenes::Node > m_cameraNode;
 			std::weak_ptr< EmEn::Scenes::Node > m_cubeNode;
@@ -166,7 +182,12 @@ namespace ProjetNihil
 			std::weak_ptr< EmEn::Scenes::StaticEntity > m_chromeSphere;
 			std::weak_ptr< EmEn::Scenes::StaticEntity > m_rubySphere;
 			std::weak_ptr< EmEn::Scenes::StaticEntity > m_sapphireSphere;
-			bool m_useStaticLighting{DefaultUseStaticLighting};
-			bool m_postProcessingEnabled{false};
+			/* The artistic effects the KeySpace shortcut toggles. The god rays live in the scene
+			 * chain (multi-pass); the lens effects are single-pass and are baked into the composite
+			 * shader, so toggling them means removing them from the camera and putting them back. */
+			std::shared_ptr< EmEn::Graphics::Effects::Framebuffer::VolumetricLight > m_volumetricLight;
+			std::vector< std::shared_ptr< EmEn::Graphics::DirectPostProcessEffect > > m_lensEffects;
+			bool m_useSkyLighting{DefaultUseSkyLighting};
+			bool m_effectsEnabled{true};
 	};
 }

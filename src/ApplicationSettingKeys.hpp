@@ -27,5 +27,9 @@
 #pragma once
 
 /* You can define your own keys here for Settings service. */
-constexpr auto UseStaticLightingKey{"App/UseStaticLighting"};
-constexpr auto DefaultUseStaticLighting{false};
+
+/* Selects the lighting mode of the demo: the sky-driven one (the engine derives everything
+ * from the background photometric manifest) or the hand-authored dynamic one (explicit
+ * lights, animated, with shadow maps). */
+constexpr auto UseSkyLightingKey{"App/UseSkyLighting"};
+constexpr auto DefaultUseSkyLighting{true};

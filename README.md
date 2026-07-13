@@ -1,203 +1,204 @@
 # Projet-Nihil
 
 ![License](https://img.shields.io/badge/license-LGPLv3-blue.svg)
+![Version](https://img.shields.io/badge/version-1.6.0-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)
 
-A complete working example demonstrating how to use [Emeraude Engine](https://github.com/EmeraudeEngine/emeraude-engine) to build 3D applications. This project serves as a starting point and reference implementation for developers getting started with the engine.
+The **showcase project** of [Emeraude Engine](https://github.com/EmeraudeEngine/emeraude-engine):
+the smallest possible real application that still does something meaningful. One class,
+`Application final : public EmEn::Core`, four lifecycle hooks, a complete 3D scene.
 
-## What This Project Demonstrates
-
-- **Application lifecycle:** Proper initialization, update loop, and shutdown patterns
-- **Scene management:** Creating and configuring 3D scenes with skybox and terrain
-- **Resource loading:** Using the resource manager for meshes, materials, and geometry
-- **Camera system:** Setting up an animated camera with smooth interpolation
-- **Lighting:** Configuring both static and dynamic lighting setups
-- **Scene nodes:** Creating and manipulating scene graph nodes with transforms
-- **Animations:** Implementing keyframe-based animations with interpolation
-- **Procedural generation:** Generating terrain using Perlin noise
-- **Input handling:** Processing keyboard events and implementing application shortcuts
-
-
-## Requirements
-
-### Build Tools
-- **CMake:** 3.25.1 or higher
-- **Python:** 3.0 or higher
-- **C++20 Compiler:**
-  - **Linux:** GCC 13.3.0+ (Ubuntu 24.04 LTS) or GCC 14.2.0+ (Debian 13)
-  - **macOS:** Apple Clang 17.0+ with SDK 12.0+ (tested on macOS Sequoia 15.5)
-  - **Windows:** MSVC 19.43+ / Visual Studio 2022
-
-### Dependencies
-- **Vulkan SDK:** 1.4.309.0 from [vulkan.lunarg.com](https://vulkan.lunarg.com/sdk/home)
-- **Emeraude Engine:** Automatically cloned as a git submodule during configuration
-- **Precompiled libraries:** Required for engine dependencies (see installation steps below)
-
-
-## Installation
-
-### Step 1: Install Vulkan SDK
-
-**Linux:**
-```bash
-sudo apt install libvulkan-dev vulkan-tools vulkan-validationlayers vulkan-validationlayers-dev
-```
-
-**macOS:**
-```bash
-# Download from:
-https://sdk.lunarg.com/sdk/download/1.4.309.0/mac/vulkansdk-macos-1.4.309.0.zip
-```
-
-**Windows:**
-```bash
-# Download and run installer from:
-https://sdk.lunarg.com/sdk/download/1.4.309.0/windows/VulkanSDK-1.4.309.0-Installer.exe
-```
-
-### Step 2: Clone the Repository
+If you are discovering the engine, **start here**. This is a teaching artifact as much as a
+program: it stays deliberately simple and readable, so you can follow `onCoreStarted()`
+top-to-bottom and learn how an application is built.
 
 ```bash
 git clone https://github.com/EmeraudeEngine/projet-nihil.git
 cd projet-nihil
+python3 build.py
+./cmake-build-release/Release/projet-nihil
 ```
 
-### Step 3: Download Precompiled Dependencies
+CMake clones the engine (which clones the foundation library) and downloads the prebuilt
+external dependencies by itself. You manage none of it.
 
-Download the precompiled libraries for your platform from [Google Drive](https://drive.google.com/drive/folders/1nDv35NuAPEg-XAGQIMZ7uCoqK3SK0VxZ?usp=drive_link).
+## Where to read what
 
-Extract the archive into `./dependencies/emeraude-engine/dependencies/`:
-
-**Linux:**
 ```
-./dependencies/emeraude-engine/dependencies/
-├── linux.x86_64.Release/
-└── linux.x86_64.Debug/
+ext-deps-generator  →  emeraude-base  →  emeraude-engine  →  projet-nihil
 ```
 
-**macOS:**
-```
-./dependencies/emeraude-engine/dependencies/
-├── mac.arm64.Release/
-└── mac.arm64.Debug/
-```
+| Level | Documents |
+|---|---|
+| [`emeraude-base`](https://github.com/EmeraudeEngine/emeraude-base/blob/main/README.md) | The foundation library (`EmEn::Base`), the **toolchain requirements**, the compile policy, and **everything about external dependencies**. |
+| [`emeraude-engine`](https://github.com/EmeraudeEngine/emeraude-engine/blob/main/README.md) | The Vulkan runtime: systems, **Vulkan SDK**, build options, the `EmEn::Core` contract, GPU debugging, troubleshooting. |
+| **`projet-nihil`** (here) | This application: what it demonstrates, its scene, its controls, and how to read its source. |
 
-**Windows:**
-```
-./dependencies/emeraude-engine/dependencies/
-├── windows.x86_64.Release-MD/
-└── windows.x86_64.Debug-MD/
-```
+> [!NOTE]
+> Nothing about the engine's internals or the dependency machinery is repeated here. When
+> something fails to **build**, the answer is in one of the two READMEs above; when something is
+> unclear about **how to write an application**, it is here.
 
-*Note*: If you want to compile external dependencies manually, you can use : https://github.com/EmeraudeEngine/ext-deps-generator
+## Requirements
 
-### Step 4: Configure and Build
+- The **toolchain** (CMake 3.25.1+, a C++20 compiler, Python 3, Git) —
+  [see emeraude-base](https://github.com/EmeraudeEngine/emeraude-base/blob/main/README.md#requirements).
+- The **Vulkan SDK 1.4+** and the platform packages —
+  [see emeraude-engine](https://github.com/EmeraudeEngine/emeraude-engine/blob/main/README.md#requirements).
 
-**Using an IDE (CLion, Visual Studio, VSCode):**
-- Open the project folder
-- Let CMake configure automatically
-- Build the Release configuration
+In short, on Debian 13+ / Ubuntu 24.04+ / Mint 22.3+:
 
-**Using command line:**
 ```bash
-# Configure
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-
-# Build
-cmake --build build --config Release
-
-# Run
-./build/Release/projet-nihil  # Linux/macOS
-.\build\Release\projet-nihil.exe  # Windows
+sudo apt install build-essential cmake python3 ninja-build git \
+    libvulkan-dev vulkan-tools vulkan-validationlayers vulkan-validationlayers-dev \
+    libfontconfig-dev libwayland-dev libxkbcommon-dev xorg-dev
 ```
 
-You should see a 3D scene with a rotating cube on procedurally generated terrain.
+On macOS and Windows, install the Vulkan SDK 1.4+ at its default location (links in the
+engine README). macOS also needs **MoltenVK ≥ 1.4**, otherwise the terrain renders pure
+black — that specific trap is documented in the
+[engine troubleshooting section](https://github.com/EmeraudeEngine/emeraude-engine/blob/main/README.md#macos-correct-sky-pure-black-terrain).
 
-## Usage
+## Build and run
 
-### Controls
+`build.py` configures a Release build with the right generator and architecture for your OS,
+then builds it:
 
-- **F1:** Show application information dialog
-- **ESC:** Exit application (standard window close)
-
-### Code Structure
-
-The main application code is located in `src/Application.cpp`. Key methods:
-
-- `onBeforeCoreSecondaryServicesInitialization()`: Called before graphics/audio initialization
-- `onCoreStarted()`: Main setup - create scenes, cameras, lights, and objects
-- `onCoreProcessLogics()`: Called every frame - update game logic
-- `onCoreKeyPress()` / `onCoreKeyRelease()`: Handle keyboard input
-
-## Learning from the Code
-
-### Scene Setup (Application.cpp:107-113)
-```cpp
-const auto newScene = this->sceneManager().newScene(
-    "EmptyScene",
-    1000.0F,           // View distance
-    defaultSkyBox,     // Skybox resource
-    defaultSceneArea,  // Ground/terrain
-    nullptr            // Optional background music
-);
+```bash
+python3 build.py
 ```
 
-### Creating Scene Nodes with Camera (Application.cpp:117-119)
-```cpp
-const auto sceneNode = newScene->root()->createChild(
-    "TheCameraNode",
-    Math::CartesianFrame{-512.0F, -80.0F, 256.0F}
-);
-sceneNode->componentBuilder< Component::Camera >("TheCamera").asPrimary().build(true);
-sceneNode->lookAt(Math::Vector< 3, float >{0.0F, -75.0F, 0.0F}, false);
+Or drive CMake yourself — the cascade is fetched on the first configure either way:
+
+```bash
+cmake -S . -B cmake-build-release -DCMAKE_BUILD_TYPE=Release
+cmake --build cmake-build-release --config Release -j$(nproc)
 ```
 
-### Procedural Terrain Generation (Application.cpp:93-104)
-```cpp
-const auto defaultSceneArea = resourceManager.container< Renderable::BasicFloorResource >()
-    ->getOrCreateResource("TheSceneArea", [&resourceManager] (Renderable::BasicFloorResource & newResource) {
-        constexpr auto Boundary{4096.0F};
-        const auto materialResource = resourceManager.container< Material::BasicResource >()
-            ->getDefaultResource();
+The binary lands in `cmake-build-<config>/<Config>/projet-nihil` — `.exe` on Windows, a
+`projet-nihil.app` bundle on macOS. Any CMake-aware IDE (CLion, Visual Studio, VSCode) works:
+open the folder, let it configure, build.
 
-        if ( !newResource.loadPerlinNoise(Boundary, 256, 10.0F, 200.0F, materialResource, 1.0F) )
-        {
-            return false;
-        }
+You should see a dark, polished stone terrain under a skybox, with a rotating porcelain cube, a
+floating iridescent torus, bobbing spheres, and a camera orbiting the scene.
 
-        return true;
-    });
+## Controls
+
+| Key | Action |
+|---|---|
+| **F1** | Show the application information dialog. |
+| **Space** | Toggle the *artistic* post-processing layer (see below). |
+
+These two are the *application's* shortcuts — the ones registered in `Application::Application()`.
+The engine contributes its own on top (`Shift+F1…F12`, `Shift+Escape`, screenshot, editor
+mode…): see the
+[engine shortcuts table](https://github.com/EmeraudeEngine/emeraude-engine/blob/main/README.md#built-in-shortcuts).
+
+## Settings
+
+| Key | Default | Effect |
+|---|---|---|
+| `App/UseSkyLighting` | `true` | Selects the lighting mode (see below). |
+
+## What it demonstrates
+
+Read `src/Application.cpp` in order — it is written as a guided tour:
+
+| Hook | Role |
+|---|---|
+| `onBeforeCoreSecondaryServicesInitialization()` | Tweak services before they spin up. |
+| `onCoreStarted(arguments, settings)` | **Build the scene**: skybox, terrain, camera, lights, nodes, materials, animations, post-processing. The bulk of the demo. |
+| `onCoreProcessLogics(engineCycle)` | Per-cycle update loop — rotations, bobbing, camera aim. |
+| `onCoreKeyRelease(key, scancode, modifiers)` | Input handling and application shortcuts. |
+
+Along the way: **resource loading** through the resource manager (meshes, PBR materials,
+geometry), **procedural terrain** from Perlin noise, a **scene graph** of nodes with transforms,
+**keyframe animations** with interpolation, the **Toolkit** scene builder, and procedurally
+generated background music.
+
+### Everything is in metres, and that matters
+
+The scene is deliberately **human-scale**: a 1 m cube, 35 cm spheres, a 60 cm torus, on a ~82 m
+terrain, with the camera orbiting about 5 m out. It was rescaled down from a monumental version
+for one reason: **photometric units only teach anything at a scale where the real numbers
+apply.** At 300 m, the orbiting lamps needed ~10⁹ lumens to register against the sun —
+arithmetically correct (`E = I/d²`), pedagogically backwards. At metres, they are ordinary
+catalogue fixtures.
+
+> [!WARNING]
+> **All light quantities are photometric, in real-world units** — not `[0..1]` sliders. A
+> directional light takes an **illuminance in lux** (direct sun 100 000, overcast 10 000, office
+> ~500, full moon 0.25); a point or spot light takes a **luminous power in lumens** (household
+> bulb 800, large floodlight ~100 000).
+
+When editing the scene, know which numbers follow the scale and which do not:
+
+| Follows the scale (world units) | Scale-independent |
+|---|---|
+| positions, radii, grid size, orbit radii, bob amplitudes, shadow coverage | **lux** (a directional light's illuminance) |
+| Perlin `factor` (a displacement, in metres) | Perlin `size` (a frequency in UV space) |
+| point/spot `radius` (a culling bound) | animation periods (**seconds**), cone **angles** (degrees) |
+| | iridescence film thickness (**nanometres**), bloom threshold (**nits**), roughness/metalness |
+
+### Two lighting modes, two halves of the model
+
+`App/UseSkyLighting` picks between them, and each teaches something different:
+
+| Mode | What it does |
+|---|---|
+| **Sky-driven** (`true`, default) | `Scene::applyBackgroundLighting()` — the engine derives the whole lighting from the background's photometric manifest: ambient (average sky colour × ambient illuminance, served by the baked IBL irradiance) plus one directional light per declared celestial body. The default skybox declares **no star**, so the sky is the only light source: pure image-based lighting, no shadow map, zero authoring. |
+| **Dynamic** (`false`) | Hand-authored: a 10 000 lx veiled sun with a 4096² shadow map, two animated orbiting 80–100 klm floodlights, a spotlight, and an explicit 2 500 lx ambient so shadowed sides are not black. |
+
+> [!NOTE]
+> The dynamic mode's sun is deliberately a **10 000 lx overcast** one, not a clear-day 100 000 lx.
+> At 100 000 lx the hand-authored fixtures — the whole point of that mode — contribute ~2% and
+> become invisible. Lighting is about **ratios**; raising the sun back to `100'000.0F` to watch
+> the coloured lamps vanish is the intended experiment.
+
+### Post-processing: three layers, only one is a matter of taste
+
+`onCoreStarted()` separates them explicitly, and the **Space** shortcut moves only the third
+(see `Application::applyEffectsState()`):
+
+1. **The sensor — tone mapping.** `camera->enableHDR(true)`. Mandatory, not an effect: the
+   renderer produces physical radiance and a screen cannot show it. Without it, a daylight scene
+   comes out pure white.
+2. **The optics — bloom.** `camera->enableBloom(true)`, declared on the camera so the engine
+   materializes it at the right place in the chain (after defocus, before the sensor). Its
+   threshold is an absolute luminance in **nits**, its intensity the **fraction** of energy the
+   glass scatters (a clean lens: a few percent) — not an artistic gain.
+3. **The artistic pass** — god rays (scene chain) plus colour grading, vignetting, chromatic
+   aberration and film grain (camera lens effects). The only creative layer, and the only one the
+   shortcut toggles — which is why both states stay photographically valid.
+
+> [!IMPORTANT]
+> Never toggle `Renderer::postProcessor().enable()` from an application: it is a global
+> kill-switch that would take the tone mapper down with everything else, leaving a blown-out
+> image. It defaults to ON and costs nothing when there is nothing to run. Toggle your own
+> effects instead. Note also that lens effects are compiled **into** the composite shader, so
+> disabling one means taking it off the camera (`clearLensEffects()`), not clearing a flag.
+
+## Source layout
+
 ```
-
-### Animation System (Application.cpp:130-149)
-```cpp
-const auto interpolation = std::make_shared< Animations::Sequence >(30'000);  // 30 seconds
-
-for ( uint32_t index = 0; index <= segmentCount; ++index ) {
-    const auto timePoint = static_cast< float >(index) / static_cast< float >(segmentCount);
-    const auto currentAngle = timePoint * (2.0F * std::numbers::pi_v< float >);
-
-    const Math::Vector< 3, float > position{
-        radius * std::cos(currentAngle),
-        yCenter + (yAmplitude * std::cos(currentAngle * 2.0F)),
-        radius * std::sin(currentAngle)
-    };
-
-    interpolation->addKeyFrame(timePoint, Variant{position}, Math::InterpolationType::Linear);
-}
-
-interpolation->play();  // Start the animation
-sceneNode->addAnimation(Scenes::Node::WorldPosition, interpolation);
+src/Application.{hpp,cpp}      the whole program — one class, four hooks
+src/ApplicationSettingKeys.hpp setting keys and their defaults
+src/Boot/{linux,mac,windows}/  per-OS entry points (the only platform-specific code)
+src/config.hpp.in              CMake-generated configuration header
+cmake/InstallEmeraudeEngine.cmake   clones the engine at configure time
+resources/                     application assets
 ```
-
-## Additional Resources
-
-- **Engine Documentation:** [Emeraude Engine README](https://github.com/EmeraudeEngine/emeraude-engine)
-- **API Reference:** Coming soon
-- **Community:** [GitHub Discussions](https://github.com/EmeraudeEngine/emeraude-engine/discussions)
 
 ## License
 
-This project is licensed under the **GNU Lesser General Public License v3.0 (LGPLv3)** - the same license as Emeraude Engine.
+**GNU Lesser General Public License v3.0 (LGPLv3)** — the same license as Emeraude Engine. See
+[`LICENSE`](LICENSE).
 
-See [LICENSE](LICENSE) for full details.
+Use it as the starting point of your own project: copy it, rename it, and replace the contents of
+`onCoreStarted()`.
+
+## Support
+
+- **Issues:** [projet-nihil issues](https://github.com/EmeraudeEngine/projet-nihil/issues)
+- **Engine discussions:** [GitHub Discussions](https://github.com/EmeraudeEngine/emeraude-engine/discussions)
+- **AI assistants:** [`AGENTS.md`](AGENTS.md)

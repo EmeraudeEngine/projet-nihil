@@ -29,6 +29,7 @@
 /* Standard inclusions. */
 #include <array>
 #include <cmath>
+#include <numbers>
 
 /* Local inclusions. */
 #include "PlatformSpecific/Desktop/Dialog/Message.hpp"
@@ -38,17 +39,16 @@
 #include "Graphics/Renderable/SkyBoxResource.hpp"
 #include "Graphics/Renderable/BasicGroundResource.hpp"
 #include "Graphics/Renderable/MeshResource.hpp"
-#include "Graphics/TextureResource/Texture2D.hpp"
 #include "Scenes/Component/Camera.hpp"
 #include "Scenes/Toolkit.hpp"
 #include "Graphics/Effects/Lens/ChromaticAberration.hpp"
 #include "Graphics/Effects/Lens/ColorGrading.hpp"
 #include "Graphics/Effects/Lens/Vignetting.hpp"
 #include "Graphics/Effects/Lens/FilmGrain.hpp"
-#include "Graphics/Effects/Framebuffer/Bloom.hpp"
 #include "Graphics/Effects/Framebuffer/VolumetricLight.hpp"
 #include "Graphics/PostProcessStack.hpp"
 #include "Audio/MusicResource.hpp"
+#include "ApplicationSettingKeys.hpp"
 
 namespace ProjetNihil
 {
@@ -64,7 +64,7 @@ namespace ProjetNihil
 	{
 		/* Register shortcuts. */
 		m_applicationHelp.registerShortcut("Show an informative dialog box.", Input::Key::KeyF1);
-		m_applicationHelp.registerShortcut("Toggle post-processing effects.", Input::Key::KeySpace);
+		m_applicationHelp.registerShortcut("Toggle the artistic post-processing effects.", Input::Key::KeySpace);
 	}
 
 #if IS_WINDOWS
@@ -73,7 +73,7 @@ namespace ProjetNihil
 	{
 		/* Register shortcuts. */
 		m_applicationHelp.registerShortcut("Show an informative dialog box.", Input::Key::KeyF1);
-		m_applicationHelp.registerShortcut("Toggle post-processing effects.", Input::Key::KeySpace);
+		m_applicationHelp.registerShortcut("Toggle the artistic post-processing effects.", Input::Key::KeySpace);
 	}
 #endif
 
@@ -84,14 +84,14 @@ namespace ProjetNihil
 		 * All usable by a call to "this->primaryServices()". There will be no window, graphics renderer etc.
 		 * If this function returns "true", the engine will properly stop the initialization. */
 
-		m_useStaticLighting = this->primaryServices().settings().getOrSetDefault< bool >(UseStaticLightingKey, DefaultUseStaticLighting);
+		m_useSkyLighting = this->primaryServices().settings().getOrSetDefault< bool >(UseSkyLightingKey, DefaultUseSkyLighting);
 
 		/* We let the engine continuing the initialization. */
 		return false;
 	}
 
 	bool
-	Application::onCoreStarted (const Arguments & arguments, Settings & settings) noexcept
+	Application::onCoreStarted (const Arguments & /*arguments*/, Settings & settings) noexcept
 	{
 		/* =====================================================================
 		 * NOTE: Here the engine is fully initialized,
@@ -123,17 +123,23 @@ namespace ProjetNihil
 					});
 
 				return newResource.loadPerlinNoise(
-					Physics::SI::kilometers(8.196F),
+					Physics::SI::meters(81.96F),
 					512,
 					materialResource,
-					{5.0F, 150.0F}
+					{
+						/* NOTE: 'size' is a frequency in UV space - dimensionless, so it does NOT
+						 * follow the scene scale. 'factor' is a displacement in WORLD units: at
+						 * human scale the terrain rolls by 1.5 m, not 150 m. */
+						.size = 5.0F,
+						.factor = 1.5F
+					}
 				);
 			});
 
 		/* NOTE: Create the new scene. */
 		const auto newScene = this->sceneManager().newScene(
 			"EmptyScene",
-			Physics::SI::kilometers(1.0F),
+			Physics::SI::meters(10.0F),
 			defaultSkyBox,
 			defaultSceneArea,
 			nullptr
@@ -141,14 +147,14 @@ namespace ProjetNihil
 
 		/* NOTE: Create a camera inside the scene. */
 		{
-			const auto sceneNode = newScene->root()->createChild("TheCameraNode", Math::CartesianFrame{-512.0F, -80.0F, 256.0F});
+			const auto sceneNode = newScene->root()->createChild("TheCameraNode", Math::CartesianFrame{-5.12F, -0.8F, 2.56F});
 			sceneNode->componentBuilder< Component::Camera >("TheCamera").asPrimary().build(true);
-			sceneNode->lookAt(Math::Vector< 3, float >{0.0F, -75.0F, 0.0F}, false);
+			sceneNode->lookAt(Math::Vector< 3, float >{0.0F, -0.75F, 0.0F}, false);
 
 			{
 				constexpr auto segmentCount{16U};
-				constexpr float yMax = -70.0F;
-				constexpr float yMin = -350.0F;
+				constexpr float yMax = -0.7F;
+				constexpr float yMin = -3.5F;
 				constexpr float yCenter = (yMax + yMin) / 2.0F;
 				constexpr float yAmplitude = (yMax - yMin) / 2.0F;
 
@@ -157,7 +163,7 @@ namespace ProjetNihil
 
 				for ( uint32_t index = 0; index <= segmentCount; ++index )
 				{
-					constexpr auto radius{512.0F};
+					constexpr auto radius{5.12F};
 					const auto timePoint = static_cast< float >(index) / static_cast< float >(segmentCount);
 
 					const auto currentAngle = timePoint * (2.0F * std::numbers::pi_v< float >);
@@ -182,27 +188,56 @@ namespace ProjetNihil
 		/* NOTE: Use the Toolkit to build the scene lighting and decorations. */
 		Toolkit toolkit{settings, resources, newScene};
 
-		if ( m_useStaticLighting )
+		/* NOTE: Every light quantity below is PHOTOMETRIC, in real-world units: an illuminance
+		 * in lux for a directional light (the sun), a luminous power in lumens for a point or a
+		 * spot light (what a bulb is sold as). They are not [0..1] sliders. */
+		if ( m_useSkyLighting )
 		{
-			TraceInfo{ClassId} << "Using static lighting ...";
+			/* NOTE: Sky-driven lighting. The engine derives the whole scene lighting from the
+			 * photometric manifest of the background: the ambient (the average sky color times
+			 * its ambient illuminance, served by the baked IBL irradiance) plus one directional
+			 * light per declared celestial body. It is OPT-IN: nothing happens without this call.
+			 * The default skybox declares no star, so here the sky is the ONLY light source —
+			 * pure image-based lighting, no explicit light, no shadow map. Give the manifest a
+			 * "Stars" array and the same call would light and shadow the scene from its sun. */
+			TraceInfo{ClassId} << "Using sky-driven lighting ...";
 
-			auto & staticLighting = newScene->lightSet().enableAsStaticLighting();
-			staticLighting.setAmbientParameters(DarkBlue, 0.15F);
-			staticLighting.setLightParameters(DarkYellow, 1.5F);
-			staticLighting.setAsDirectionalLight({-750.0F, -1000.0F, 250.0F});
+			if ( !newScene->applyBackgroundLighting({.shadowMapResolution = 4096, .shadowCoverage = 500.0F}) )
+			{
+				TraceError{ClassId} << "Unable to derive the lighting from the background!";
+			}
 		}
 		else
 		{
 			TraceInfo{ClassId} << "Using dynamic lighting ...";
 
-			/* Sun-light with shadow mapping. */
-			toolkit.setCursor(-750.0F, -1000.0F, 250.0F);
-			toolkit.generateDirectionalLight("TheSun", {1.0F, 0.95F, 0.85F, 1.0F}, 1.2F, 4096, 500.0F);
+			/* NOTE: A photometric ambient stands in for the sky and the bounce light, so the
+			 * shadowed sides are not pure black. A surface shadowed under a clear sky receives
+			 * 10 to 20% of the direct sun. */
+			newScene->lightSet().setAmbientLightColor({0.55F, 0.68F, 1.0F, 1.0F});
+			newScene->lightSet().setAmbientLightIntensity(2'500.0F);
+
+			/* NOTE: A VEILED / overcast sun, 10 000 lux - the engine's own reference value for
+			 * overcast daylight. This is a deliberate lighting choice, not a scale artefact: at
+			 * 100 000 lux (clear-day direct sun) the hand-authored fixtures below would be a 2%
+			 * contribution and you would not see them at all. Lighting is about RATIOS, and this
+			 * mode exists to show what a point light and a spotlight do. Raise this to
+			 * 100'000.0F to watch the coloured lamps vanish into the sun - that is the lesson. */
+			toolkit.setCursor(-7.5F, -10.0F, 2.5F);
+			toolkit.generateDirectionalLight("TheSun", {1.0F, 0.95F, 0.85F, 1.0F}, 10'000.0F, 4096, 5.0F);
+
+			/* NOTE: A point or spot light is given its LUMINOUS POWER in lumens, and its
+			 * illuminance falls off as E = I/d². At human scale the distances are metres, so
+			 * ordinary catalogue numbers work: these are large floodlights (80-100 klm, real
+			 * fixtures) hanging 2-4 m away, which lands them around 2000-4000 lux - a good
+			 * fraction of the 10 000 lux sun, so they read as clear coloured pools of light.
+			 * The 'radius' is NOT the falloff: with a physical inverse-square falloff it is only
+			 * a culling bound, set where the contribution becomes negligible. */
 
 			/* Warm amber point light orbiting clockwise. */
-			toolkit.setCursor(200.0F, -300.0F, 200.0F);
+			toolkit.setCursor(2.0F, -3.0F, 2.0F);
 			{
-				const auto warmLight = toolkit.generatePointLight< Node >("WarmLight", {1.0F, 0.7F, 0.3F, 1.0F}, 600.0F, 0.8F, 1024);
+				const auto warmLight = toolkit.generatePointLight< Node >("WarmLight", {1.0F, 0.7F, 0.3F, 1.0F}, 25.0F, 100'000.0F, 1024);
 				const auto warmLightNode = warmLight.entity();
 
 				constexpr auto segmentCount{32U};
@@ -211,14 +246,14 @@ namespace ProjetNihil
 
 				for ( uint32_t index = 0; index <= segmentCount; ++index )
 				{
-					constexpr auto orbitHeight{-250.0F};
-					constexpr auto orbitRadius{300.0F};
+					constexpr auto orbitHeight{-2.5F};
+					constexpr auto orbitRadius{3.0F};
 					const auto timePoint = static_cast< float >(index) / static_cast< float >(segmentCount);
 					const auto angle = timePoint * (2.0F * std::numbers::pi_v< float >);
 
 					const Math::Vector< 3, float > position{
 						orbitRadius * std::cos(angle),
-						orbitHeight + (50.0F * std::sin(angle * 3.0F)),
+						orbitHeight + (0.5F * std::sin(angle * 3.0F)),
 						orbitRadius * std::sin(angle)
 					};
 
@@ -231,9 +266,9 @@ namespace ProjetNihil
 			}
 
 			/* Cool blue point light orbiting counter-clockwise. */
-			toolkit.setCursor(-200.0F, -250.0F, -200.0F);
+			toolkit.setCursor(-2.0F, -2.5F, -2.0F);
 			{
-				const auto coolLight = toolkit.generatePointLight< Node >("CoolLight", {0.3F, 0.5F, 1.0F, 1.0F}, 600.0F, 0.6F, 1024);
+				const auto coolLight = toolkit.generatePointLight< Node >("CoolLight", {0.3F, 0.5F, 1.0F, 1.0F}, 25.0F, 80'000.0F, 1024);
 				const auto coolLightNode = coolLight.entity();
 
 				constexpr auto segmentCount{32U};
@@ -242,14 +277,14 @@ namespace ProjetNihil
 
 				for ( uint32_t index = 0; index <= segmentCount; ++index )
 				{
-					constexpr auto orbitHeight{-200.0F};
-					constexpr auto orbitRadius{350.0F};
+					constexpr auto orbitHeight{-2.0F};
+					constexpr auto orbitRadius{3.5F};
 					const auto timePoint = static_cast< float >(index) / static_cast< float >(segmentCount);
 					const auto angle = -timePoint * (2.0F * std::numbers::pi_v< float >);
 
 					const Math::Vector< 3, float > position{
 						orbitRadius * std::cos(angle),
-						orbitHeight + 40.0F * std::sin(angle * 2.0F),
+						orbitHeight + (0.4F * std::sin(angle * 2.0F)),
 						orbitRadius * std::sin(angle)
 					};
 
@@ -261,9 +296,11 @@ namespace ProjetNihil
 				coolLightNode->addAnimation(Node::WorldPosition, interpolation);
 			}
 
-			/* Spotlight illuminating the center stage from above. */
-			toolkit.setCursor(0.0F, -500.0F, 0.0F);
-			toolkit.generateSpotLight("CenterSpot", {0.0F, -75.0F, 0.0F}, 25.0F, 35.0F, White, 800.0F, 1.5F, 2048);
+			/* Spotlight illuminating the center stage from above. The cone concentrates the flux
+			 * into ~1.14 steradian instead of 4*pi, so the same power buys roughly ten times the
+			 * candela of a point light: 80 klm at 4.25 m lands near 3900 lux on the cube. */
+			toolkit.setCursor(0.0F, -5.0F, 0.0F);
+			toolkit.generateSpotLight("CenterSpot", {0.0F, -0.75F, 0.0F}, 25.0F, 35.0F, White, 15.0F, 80'000.0F, 2048);
 
 			newScene->lightSet().enable();
 		}
@@ -289,12 +326,12 @@ namespace ProjetNihil
 						});
 
 					return meshResource.load(
-						generator.cube(100.0F, "TheCubeGeometry"),
+						generator.cube(1.0F, "TheCubeGeometry"),
 						material
 					);
 			   });
 
-			const auto sceneNode = newScene->root()->createChild("TheCubeNode", Math::CartesianFrame{0.0F, -75.0F, 0.0F});
+			const auto sceneNode = newScene->root()->createChild("TheCubeNode", Math::CartesianFrame{0.0F, -0.75F, 0.0F});
 
 			sceneNode->componentBuilder< Component::Visual >("TheCube")
 				.setup([] (auto & component) {
@@ -318,9 +355,9 @@ namespace ProjetNihil
 					return materialResource.setManualLoadSuccess(true);
 				});
 
-			toolkit.setCursor(200.0F, -75.0F, 200.0F);
+			toolkit.setCursor(2.0F, -0.75F, 2.0F);
 
-			m_goldSphere = toolkit.generateSphereInstance("GoldSphere", 35.0F, goldMaterial, false, true, 64).entity();
+			m_goldSphere = toolkit.generateSphereInstance("GoldSphere", 0.35F, goldMaterial, false, true, 64).entity();
 
 			/* Chrome sphere - perfect mirror. */
 			const auto chromeMaterial = resources.container< Material::PBRResource >()
@@ -333,9 +370,9 @@ namespace ProjetNihil
 					return materialResource.setManualLoadSuccess(true);
 				});
 
-			toolkit.setCursor(-200.0F, -75.0F, 200.0F);
+			toolkit.setCursor(-2.0F, -0.75F, 2.0F);
 
-			m_chromeSphere = toolkit.generateSphereInstance("ChromeSphere", 35.0F, chromeMaterial, false, true, 64).entity();
+			m_chromeSphere = toolkit.generateSphereInstance("ChromeSphere", 0.35F, chromeMaterial, false, true, 64).entity();
 
 			/* Ruby sphere - translucent gemstone with subsurface scattering. */
 			const auto rubyMaterial = resources.container< Material::PBRResource >()
@@ -350,9 +387,9 @@ namespace ProjetNihil
 					return materialResource.setManualLoadSuccess(true);
 				});
 
-			toolkit.setCursor(200.0F, -75.0F, -200.0F);
+			toolkit.setCursor(2.0F, -0.75F, -2.0F);
 
-			m_rubySphere = toolkit.generateSphereInstance("RubySphere", 35.0F, rubyMaterial, false, true, 64).entity();
+			m_rubySphere = toolkit.generateSphereInstance("RubySphere", 0.35F, rubyMaterial, false, true, 64).entity();
 
 			/* Sapphire sphere - iridescent gemstone. */
 			const auto sapphireMaterial = resources.container< Material::PBRResource >()
@@ -367,9 +404,9 @@ namespace ProjetNihil
 					return materialResource.setManualLoadSuccess(true);
 				});
 
-			toolkit.setCursor(-200.0F, -75.0F, -200.0F);
+			toolkit.setCursor(-2.0F, -0.75F, -2.0F);
 
-			m_sapphireSphere = toolkit.generateSphereInstance("SapphireSphere", 35.0F, sapphireMaterial, false, true, 64).entity();
+			m_sapphireSphere = toolkit.generateSphereInstance("SapphireSphere", 0.35F, sapphireMaterial, false, true, 64).entity();
 		}
 
 		/* NOTE: Create a floating torus with an iridescent material (Toolkit + custom geometry). */
@@ -389,11 +426,11 @@ namespace ProjetNihil
 
 			const Geometry::ResourceGenerator generator{resources, Geometry::EnableTangentSpace | Geometry::EnablePrimaryTextureCoordinates};
 
-			toolkit.setCursor(0.0F, -200.0F, 0.0F);
+			toolkit.setCursor(0.0F, -2.0F, 0.0F);
 
 			const auto torusEntity = toolkit.generateRenderableInstance< Node >(
 				"TheTorus",
-				generator.torus(60.0F, 12.0F, 64, 32, "TorusGeometry"),
+				generator.torus(0.6F, 0.12F, 64, 32, "TorusGeometry"),
 				std::static_pointer_cast< Material::Interface >(torusMaterial)
 			);
 
@@ -410,7 +447,28 @@ namespace ProjetNihil
 			trackMixer.play();
 		}
 
-		/* NOTE: Configure subtle post-processing effects. */
+		/* =====================================================================
+		 * NOTE: Post-processing. There are THREE distinct layers here, and telling them
+		 * apart is the whole lesson of this block:
+		 *
+		 *  1. The SENSOR (tone mapping). The scene is lit in real photometric units — the sun
+		 *     above is 10 000 lux, the sky 8000 nits — so the renderer produces physical
+		 *     radiance, not [0..1] colors. A screen cannot show that. The tone mapper is what
+		 *     maps the one onto the other, exactly like the sensor of a real camera, and it is
+		 *     therefore NOT optional and NOT an "effect": without it the raw radiance reaches
+		 *     an LDR swap-chain and a daylight scene comes out pure white. It is declared on
+		 *     the CAMERA (the photographic authority) and stays on in both modes below.
+		 *
+		 *  2. The OPTICS (bloom). Veiling glare is light scattering inside the lens, so it
+		 *     applies to the image the optics have already formed — after the defocus, before
+		 *     the sensor. Declaring it on the camera is what puts it at that place in the
+		 *     chain; the engine materializes it there for us. Its threshold is an absolute
+		 *     scene luminance in nits, and its intensity the FRACTION of energy the glass
+		 *     scatters (a clean lens: a few percent), not an artistic gain.
+		 *
+		 *  3. The ARTISTIC pass (god rays, grading, vignetting, grain). This is the only
+		 *     layer that is a matter of taste, and the only one the KeySpace shortcut toggles.
+		 * ===================================================================== */
 		{
 			auto & renderer = this->graphicsRenderer();
 
@@ -420,22 +478,18 @@ namespace ProjetNihil
 
 				auto stack = std::make_unique< PostProcessStack >();
 
-				/* HDR Bloom (Dual Kawase). */
-				stack->addEffect(std::make_shared< Framebuffer::Bloom >(renderer, Framebuffer::Bloom::Parameters{
-					.threshold = 0.85F,
-					.softKnee = 0.5F,
-					.intensity = 0.6F,
-					.spread = 1.0F
-				}));
-
-				/* Volumetric light (God Rays) matching the sun direction. */
-				stack->addEffect(std::make_shared< Framebuffer::VolumetricLight >(renderer, Framebuffer::VolumetricLight::Parameters{
+				/* Volumetric light (God Rays) matching the sun direction. Kept as an
+				 * application-authored scene effect: it is a property of the ATMOSPHERE, it
+				 * needs the light set, and it is not part of the camera body. */
+				m_volumetricLight = std::make_shared< Framebuffer::VolumetricLight >(renderer, Framebuffer::VolumetricLight::Parameters{
 					.density = 0.8F,
 					.decay = 0.98F,
 					.exposure = 0.15F,
 					.numSamples = 64,
 					.depthThreshold = 0.9999F
-				}));
+				});
+
+				stack->addEffect(m_volumetricLight);
 
 				if ( !stack->createAll(windowState.framebufferWidth, windowState.framebufferHeight) )
 				{
@@ -445,39 +499,60 @@ namespace ProjetNihil
 				newScene->setPostProcessStack(std::move(stack));
 			}
 
-			/* Single-pass lens effects → Camera. */
 			if ( const auto cameraNode = m_cameraNode.lock() )
 			{
 				if ( const auto camera = cameraNode->getComponent< Component::Camera >("TheCamera") )
 				{
-					/* Subtle radial chromatic aberration (lens fringing). */
-					auto chromaticAberration = std::make_shared< Lens::ChromaticAberration >(0.003F);
-					chromaticAberration->enableRadial(true);
-					camera->addLensEffect(chromaticAberration);
+					/* 1. The sensor: HDR rendering with the auto-exposure metering the scene. */
+					camera->enableHDR(true);
+					camera->setExposureCompensation(-0.3F);
 
-					/* Gentle warm color grading. */
-					auto colorGrading = std::make_shared< Lens::ColorGrading >();
-					colorGrading->setSaturation(1.1F);
-					colorGrading->setHue(0.06F);
-					colorGrading->setContrast(1.1F);
-					colorGrading->setBrightness(0.02F);
-					colorGrading->setGamma(1.05F);
-					camera->addLensEffect(colorGrading);
+					/* 2. The optics: the sky sits around 8000 nits, so glare only on what is
+					 * brighter than that — the sun-lit highlights of the metals and the gems. */
+					camera->setBloomThreshold(9'000.0F);
+					camera->setBloomIntensity(0.04F);
+					camera->enableBloom(true);
 
-					/* Light cinematic vignetting. */
-					auto vignetting = std::make_shared< Lens::Vignetting >(0.4F);
-					vignetting->setRadius(0.45F);
-					vignetting->setSoftness(0.55F);
-					camera->addLensEffect(vignetting);
+					/* 3. The artistic pass, single-pass lens effects. Kept so KeySpace can put
+					 * them back: the composite shader is generated from the camera's effect
+					 * LIST, so disabling one means taking it off the camera (the program cache
+					 * makes putting the same set back a hit, not a rebuild). */
+					{
+						/* Subtle radial chromatic aberration (lens fringing). */
+						auto chromaticAberration = std::make_shared< Lens::ChromaticAberration >(0.003F);
+						chromaticAberration->enableRadial(true);
+						m_lensEffects.emplace_back(std::move(chromaticAberration));
 
-					/* Barely perceptible film grain. */
-					auto filmGrain = std::make_shared< Lens::FilmGrain >(0.05F);
-					filmGrain->setSize(1.0F);
-					camera->addLensEffect(filmGrain);
+						/* Gentle warm color grading. */
+						auto colorGrading = std::make_shared< Lens::ColorGrading >();
+						colorGrading->setSaturation(1.1F);
+						colorGrading->setHue(0.06F);
+						colorGrading->setContrast(1.1F);
+						colorGrading->setBrightness(0.02F);
+						colorGrading->setGamma(1.05F);
+						m_lensEffects.emplace_back(std::move(colorGrading));
+
+						/* Light cinematic vignetting. */
+						auto vignetting = std::make_shared< Lens::Vignetting >(0.4F);
+						vignetting->setRadius(0.45F);
+						vignetting->setSoftness(0.55F);
+						m_lensEffects.emplace_back(std::move(vignetting));
+
+						/* Barely perceptible film grain. */
+						auto filmGrain = std::make_shared< Lens::FilmGrain >(0.05F);
+						filmGrain->setSize(1.0F);
+						m_lensEffects.emplace_back(std::move(filmGrain));
+					}
 				}
 			}
 
-			renderer.postProcessor().enable(false);
+			/* NOTE: The renderer master switch is a global kill-switch — it would take the tone
+			 * mapping down with everything else. It defaults to ON and an application has no
+			 * reason to touch it: a scene with nothing to run pays nothing anyway. Our own
+			 * toggle below is selective, which is why the image stays viewable in both states. */
+			renderer.postProcessor().enable(true);
+
+			this->applyEffectsState();
 		}
 
 		/* NOTE: Enable the new scene. */
@@ -515,16 +590,42 @@ namespace ProjetNihil
 			};
 
 			constexpr std::array< BobParams, 4 > bobbing{{
-				{5.0F,  25.0F, 0.0F,            -75.0F},  /* Gold: slow, large. */
-				{3.5F,  18.0F, 1.5707963F,      -75.0F},  /* Chrome: medium, offset pi/2. */
-				{7.0F,  30.0F, 3.1415927F,      -75.0F},  /* Ruby: very slow, large, offset pi. */
-				{4.2F,  20.0F, 0.7853982F,      -75.0F},  /* Sapphire: medium, offset pi/4. */
+				/* NOTE: The periods are SECONDS and do not scale; the amplitudes and the base
+				 * height are world units, so they do: the spheres bob by 20-30 cm, not 30 m. */
+				/* Gold: slow, large. */
+				{
+					.period = 5.0F,
+					.amplitude = 0.25F,
+					.phaseOffset = 0.0F,
+					.baseY = -0.75F
+				},
+				/* Chrome: medium, offset pi/2. */
+				{
+					.period = 3.5F,
+					.amplitude = 0.18F,
+					.phaseOffset = std::numbers::pi_v< float > * 0.5F,
+					.baseY = -0.75F
+				},
+				/* Ruby: very slow, large, offset pi. */
+				{
+					.period = 7.0F,
+					.amplitude = 0.30F,
+					.phaseOffset = std::numbers::pi_v< float >,
+					.baseY = -0.75F
+				},
+				/* Sapphire: medium, offset pi/4. */
+				{
+					.period = 4.2F,
+					.amplitude = 0.20F,
+					.phaseOffset = std::numbers::pi_v< float > * 0.25F,
+					.baseY = -0.75F
+				}
 			}};
 
 			auto applySphereY = [&time] (const std::weak_ptr< StaticEntity > & weakSphere, const BobParams & params) {
 				if ( const auto sphere = weakSphere.lock() )
 				{
-					const auto y = params.baseY + params.amplitude * std::sin(2.0F * std::numbers::pi_v< float > * time / params.period + params.phaseOffset);
+					const auto y = params.baseY + (params.amplitude * std::sin((2.0F * std::numbers::pi_v< float > * time / params.period) + params.phaseOffset));
 
 					sphere->setYPosition(y, Math::TransformSpace::World);
 				}
@@ -539,12 +640,12 @@ namespace ProjetNihil
 		/* NOTE: Each cycle we make the camera look at the center of the scene. */
 		if ( const auto cameraNode = m_cameraNode.lock() )
 		{
-			cameraNode->lookAt({0.0F, -75.0F, 0.0F}, false);
+			cameraNode->lookAt({0.0F, -0.75F, 0.0F}, false);
 		}
 	}
 
 	bool
-	Application::onCoreKeyRelease (int32_t key, int32_t scancode, int32_t modifiers) noexcept
+	Application::onCoreKeyRelease (int32_t key, int32_t /*scancode*/, int32_t /*modifiers*/) noexcept
 	{
 		using namespace PlatformSpecific::Desktop;
 
@@ -572,16 +673,54 @@ namespace ProjetNihil
 
 		if ( key == Input::Key::KeySpace )
 		{
-			m_postProcessingEnabled = !m_postProcessingEnabled;
+			m_effectsEnabled = !m_effectsEnabled;
 
-			this->graphicsRenderer().postProcessor().enable(m_postProcessingEnabled);
+			this->applyEffectsState();
 
-			TraceInfo{ClassId} << "Post-processing " << (m_postProcessingEnabled ? "enabled" : "disabled") << ".";
+			TraceInfo{ClassId} << "Artistic effects " << ( m_effectsEnabled ? "enabled" : "disabled" ) << ".";
 
 			return true;
 		}
 
 		/* NOTE: Tells Core we don't consume the event. */
 		return false;
+	}
+
+	void
+	Application::applyEffectsState () const noexcept
+	{
+		/* NOTE: Only the ARTISTIC layer moves. The tone mapping (the sensor) and the bloom (the
+		 * optics) stay exactly as they are, so both states are a photographically valid image:
+		 * "off" is the raw rendered frame, not a broken one. That is the whole point of the
+		 * comparison - press KeySpace and you see what the grading adds, not what the exposure
+		 * pipeline was hiding. */
+
+		/* The god rays live in the scene chain, whose executor honours the per-effect flag: a
+		 * plain enable/disable, no pipeline rebuild. */
+		if ( m_volumetricLight != nullptr )
+		{
+			m_volumetricLight->enable(m_effectsEnabled);
+		}
+
+		/* The lens effects are single-pass and are compiled INTO the composite shader, so the
+		 * camera's effect list is the program cache key: the only way to turn one off is to take
+		 * it off the list. */
+		if ( const auto cameraNode = m_cameraNode.lock() )
+		{
+			if ( const auto camera = cameraNode->getComponent< Component::Camera >("TheCamera") )
+			{
+				if ( m_effectsEnabled )
+				{
+					for ( const auto & lensEffect : m_lensEffects )
+					{
+						camera->addLensEffect(lensEffect);
+					}
+				}
+				else
+				{
+					camera->clearLensEffects();
+				}
+			}
+		}
 	}
 }
