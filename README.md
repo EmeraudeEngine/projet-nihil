@@ -140,6 +140,16 @@ When editing the scene, know which numbers follow the scale and which do not:
 | point/spot `radius` (a culling bound) | animation periods (**seconds**), cone **angles** (degrees) |
 | | iridescence film thickness (**nanometres**), bloom threshold (**nits**), roughness/metalness |
 
+### `+Y` is up, `-Z` is forward
+
+The engine world is **right-handed and Y-up** (`+X` right, `+Y` up, `-Z` forward), the convention
+of glTF 2.0, USD and FBX. Every vertical number in `onCoreStarted()` therefore reads directly as an
+**altitude above the terrain**: the cube floats at `0.75F`, the sun sits at `10.0F`, the camera
+sweeps between 0.7 m and 3.5 m. Only the verticals are concerned — X/Z, radii, angles and periods
+mean the same thing in any convention. The full contract, and why the engine left Y-down, belongs
+to the engine:
+[`docs/coordinate-system.md`](https://github.com/EmeraudeEngine/emeraude-engine/blob/main/docs/coordinate-system.md).
+
 ### Two lighting modes, two halves of the model
 
 `App/UseSkyLighting` picks between them, and each teaches something different:

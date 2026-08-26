@@ -131,6 +131,37 @@ When editing the scene, know which numbers follow the scale and which do not:
 > are invisible. Lighting is about **ratios**; raising the sun back to `100'000.0F` to watch the
 > coloured lamps vanish is the intended experiment, and the comment in `onCoreStarted()` says so.
 
+### World convention: Y-up (Aug 2026)
+
+The engine moved from **Y-DOWN to right-handed Y-UP** — `+X` right, `+Y` up, `-Z` forward, one unit
+= one metre, the convention of glTF 2.0 / USD / FBX. The old Y-down triad `(right, down, back)` was
+physically *left*-handed while every cross product in the engine assumed right-handed algebra, so
+the renderer produced a **mirror image**. Full account, measurements included:
+[`emeraude-engine/docs/coordinate-system.md`](https://github.com/EmeraudeEngine/emeraude-engine/blob/main/docs/coordinate-system.md).
+
+`onCoreStarted()` and `onCoreProcessLogics()` were converted in the same move: every world
+**vertical was negated**, and a Y value now reads directly as an ALTITUDE above the terrain.
+
+| Site | Y-down (before) | Y-up (now) |
+|---|---|---|
+| cube, spheres, camera target | `-0.75F` | `0.75F` |
+| torus | `-2.0F` | `2.0F` |
+| orbiting floodlights | `-2.5F` / `-2.0F` | `2.5F` / `2.0F` |
+| spotlight | `-5.0F` | `5.0F` |
+| sun (its direction is the cursor position → origin) | `-10.0F` | `10.0F` |
+| camera sweep band | `yMax -0.7F` … `yMin -3.5F` | `heightMin 0.7F` … `heightMax 3.5F` |
+
+The vertical oscillations kept their **exact motion**: negating `base + A·sin(…)` yields
+`base − A·sin(…)`, so the sign in front of the oscillating term flipped while the amplitude stayed
+a positive magnitude. The demo renders as it did before the flip.
+
+> [!NOTE]
+> **Only the world verticals moved.** X/Z coordinates, radii, cone angles, animation periods, lux
+> and lumens are untouched. The `yaw()` / `pitch()` calls in `onCoreProcessLogics()` deliberately
+> **kept their positive signs**: with `+Y` up, a positive world yaw is now counter-clockwise seen
+> from above where it used to be clockwise. That is the idiomatic Y-up reading and the spin
+> direction of a decorative cube is arbitrary — negate them if the exact former spin ever matters.
+
 ### Post-processing: three layers, only one is a matter of taste
 
 `onCoreStarted()` separates them explicitly, and the `KeySpace` shortcut moves **only the

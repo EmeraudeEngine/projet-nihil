@@ -38,7 +38,7 @@ endif ()
 # Declare project and options.
 project(
 	projet-nihil
-	VERSION 1.6.0
+	VERSION 1.7.0
 	DESCRIPTION "Projet-Nihil is a starting point to use Emeraude-Engine."
 	HOMEPAGE_URL "https://github.com/EmeraudeEngine/projet-nihil"
 	LANGUAGES C CXX

@@ -34,7 +34,7 @@
 /* Local inclusions. */
 #include "PlatformSpecific/Desktop/Dialog/Message.hpp"
 #include "Animations/Sequence.hpp"
-#include "Graphics/Material/PBRResource.hpp"
+#include "Graphics/Material/StandardResource.hpp"
 #include "Graphics/Geometry/ResourceGenerator.hpp"
 #include "Graphics/Renderable/SkyBoxResource.hpp"
 #include "Graphics/Renderable/BasicGroundResource.hpp"
@@ -99,6 +99,10 @@ namespace ProjetNihil
 		 * This is where the user application can begin its own initialization.
 		 * ===================================================================== */
 
+		/* NOTE: The world is RIGHT-HANDED and Y-UP: +X goes right, +Y goes UP, -Z goes forward,
+		 * and one world unit is one metre. Every vertical value below is therefore an ALTITUDE
+		 * above the terrain - the cube floats 0.75 m up, the sun sits 10 m up. */
+
 		/* NOTE: The resource manager is provided by Core and gave access to textures, mesh, etc. */
 		auto & resources = this->resourceManager();
 
@@ -108,7 +112,7 @@ namespace ProjetNihil
 		/* NOTE: Create a ground with a polished precious stone material. */
 		const auto defaultSceneArea = resources.container< Renderable::BasicGroundResource >()
 			->getOrCreateResource("DemoBasicGround", [&resources] (Renderable::BasicGroundResource & newResource) {
-				const auto materialResource = resources.container< Material::PBRResource >()
+				const auto materialResource = resources.container< Material::StandardResource >()
 					->getOrCreateResource("DemoBasicGroundMaterial", [] (auto & newMaterial) {
 						/* Polished precious stone (dark sapphire/obsidian). */
 						newMaterial.setAlbedoComponent({0.005F, 0.005F, 0.015F, 1.0F});
@@ -147,16 +151,18 @@ namespace ProjetNihil
 
 		/* NOTE: Create a camera inside the scene. */
 		{
-			const auto sceneNode = newScene->root()->createChild("TheCameraNode", Math::CartesianFrame{-5.12F, -0.8F, 2.56F});
+			const auto sceneNode = newScene->root()->createChild("TheCameraNode", Math::CartesianFrame{-5.12F, 0.8F, 2.56F});
 			sceneNode->componentBuilder< Component::Camera >("TheCamera").asPrimary().build(true);
-			sceneNode->lookAt(Math::Vector< 3, float >{0.0F, -0.75F, 0.0F}, false);
+			sceneNode->lookAt(Math::Vector< 3, float >{0.0F, 0.75F, 0.0F}, false);
 
 			{
 				constexpr auto segmentCount{16U};
-				constexpr float yMax = -0.7F;
-				constexpr float yMin = -3.5F;
-				constexpr float yCenter = (yMax + yMin) / 2.0F;
-				constexpr float yAmplitude = (yMax - yMin) / 2.0F;
+				/* NOTE: In Y-up these are ALTITUDES: the camera sweeps between 0.7 m and 3.5 m
+				 * above the terrain, twice per orbit, starting at the low point. */
+				constexpr float heightMin = 0.7F;
+				constexpr float heightMax = 3.5F;
+				constexpr float heightCenter = (heightMax + heightMin) / 2.0F;
+				constexpr float heightAmplitude = (heightMax - heightMin) / 2.0F;
 
 				/* NOTE: Create the animation interpolation */
 				const auto interpolation = std::make_shared< Animations::Sequence >(30'000);
@@ -170,7 +176,7 @@ namespace ProjetNihil
 
 					const Math::Vector< 3, float > position{
 						radius * std::cos(currentAngle),
-						yCenter + (yAmplitude * std::cos(currentAngle * 2.0F)),
+						heightCenter - (heightAmplitude * std::cos(currentAngle * 2.0F)),
 						radius * std::sin(currentAngle)
 					};
 
@@ -223,7 +229,7 @@ namespace ProjetNihil
 			 * contribution and you would not see them at all. Lighting is about RATIOS, and this
 			 * mode exists to show what a point light and a spotlight do. Raise this to
 			 * 100'000.0F to watch the coloured lamps vanish into the sun - that is the lesson. */
-			toolkit.setCursor(-7.5F, -10.0F, 2.5F);
+			toolkit.setCursor(-7.5F, 10.0F, 2.5F);
 			toolkit.generateDirectionalLight("TheSun", {1.0F, 0.95F, 0.85F, 1.0F}, 10'000.0F, 4096, 5.0F);
 
 			/* NOTE: A point or spot light is given its LUMINOUS POWER in lumens, and its
@@ -235,7 +241,7 @@ namespace ProjetNihil
 			 * a culling bound, set where the contribution becomes negligible. */
 
 			/* Warm amber point light orbiting clockwise. */
-			toolkit.setCursor(2.0F, -3.0F, 2.0F);
+			toolkit.setCursor(2.0F, 3.0F, 2.0F);
 			{
 				const auto warmLight = toolkit.generatePointLight< Node >("WarmLight", {1.0F, 0.7F, 0.3F, 1.0F}, 25.0F, 100'000.0F, 1024);
 				const auto warmLightNode = warmLight.entity();
@@ -246,14 +252,14 @@ namespace ProjetNihil
 
 				for ( uint32_t index = 0; index <= segmentCount; ++index )
 				{
-					constexpr auto orbitHeight{-2.5F};
+					constexpr auto orbitHeight{2.5F};
 					constexpr auto orbitRadius{3.0F};
 					const auto timePoint = static_cast< float >(index) / static_cast< float >(segmentCount);
 					const auto angle = timePoint * (2.0F * std::numbers::pi_v< float >);
 
 					const Math::Vector< 3, float > position{
 						orbitRadius * std::cos(angle),
-						orbitHeight + (0.5F * std::sin(angle * 3.0F)),
+						orbitHeight - (0.5F * std::sin(angle * 3.0F)),
 						orbitRadius * std::sin(angle)
 					};
 
@@ -266,7 +272,7 @@ namespace ProjetNihil
 			}
 
 			/* Cool blue point light orbiting counter-clockwise. */
-			toolkit.setCursor(-2.0F, -2.5F, -2.0F);
+			toolkit.setCursor(-2.0F, 2.5F, -2.0F);
 			{
 				const auto coolLight = toolkit.generatePointLight< Node >("CoolLight", {0.3F, 0.5F, 1.0F, 1.0F}, 25.0F, 80'000.0F, 1024);
 				const auto coolLightNode = coolLight.entity();
@@ -277,14 +283,14 @@ namespace ProjetNihil
 
 				for ( uint32_t index = 0; index <= segmentCount; ++index )
 				{
-					constexpr auto orbitHeight{-2.0F};
+					constexpr auto orbitHeight{2.0F};
 					constexpr auto orbitRadius{3.5F};
 					const auto timePoint = static_cast< float >(index) / static_cast< float >(segmentCount);
 					const auto angle = -timePoint * (2.0F * std::numbers::pi_v< float >);
 
 					const Math::Vector< 3, float > position{
 						orbitRadius * std::cos(angle),
-						orbitHeight + (0.4F * std::sin(angle * 2.0F)),
+						orbitHeight - (0.4F * std::sin(angle * 2.0F)),
 						orbitRadius * std::sin(angle)
 					};
 
@@ -299,8 +305,8 @@ namespace ProjetNihil
 			/* Spotlight illuminating the center stage from above. The cone concentrates the flux
 			 * into ~1.14 steradian instead of 4*pi, so the same power buys roughly ten times the
 			 * candela of a point light: 80 klm at 4.25 m lands near 3900 lux on the cube. */
-			toolkit.setCursor(0.0F, -5.0F, 0.0F);
-			toolkit.generateSpotLight("CenterSpot", {0.0F, -0.75F, 0.0F}, 25.0F, 35.0F, White, 15.0F, 80'000.0F, 2048);
+			toolkit.setCursor(0.0F, 5.0F, 0.0F);
+			toolkit.generateSpotLight("CenterSpot", {0.0F, 0.75F, 0.0F}, 25.0F, 35.0F, White, 15.0F, 80'000.0F, 2048);
 
 			newScene->lightSet().enable();
 		}
@@ -311,7 +317,7 @@ namespace ProjetNihil
 				->getOrCreateResource("TheCubeMesh", [&resources] (Renderable::MeshResource & meshResource) {
 					const Geometry::ResourceGenerator generator{resources, Geometry::EnableTangentSpace | Geometry::EnablePrimaryTextureCoordinates};
 
-					const auto material = resources.container< Material::PBRResource >()
+					const auto material = resources.container< Material::StandardResource >()
 						->getOrCreateResource("TheCubeMaterial", [] (auto & materialResource) {
 							/* Glazed porcelain. */
 							materialResource.setAlbedoComponent({0.95F, 0.93F, 0.88F, 1.0F});
@@ -331,7 +337,7 @@ namespace ProjetNihil
 					);
 			   });
 
-			const auto sceneNode = newScene->root()->createChild("TheCubeNode", Math::CartesianFrame{0.0F, -0.75F, 0.0F});
+			const auto sceneNode = newScene->root()->createChild("TheCubeNode", Math::CartesianFrame{0.0F, 0.75F, 0.0F});
 
 			sceneNode->componentBuilder< Component::Visual >("TheCube")
 				.setup([] (auto & component) {
@@ -344,7 +350,7 @@ namespace ProjetNihil
 		/* NOTE: Create decorative spheres using the Toolkit (showcases the scene builder). */
 		{
 			/* Gold sphere - polished brushed metal. */
-			const auto goldMaterial = resources.container< Material::PBRResource >()
+			const auto goldMaterial = resources.container< Material::StandardResource >()
 				->getOrCreateResource("GoldMaterial", [] (auto & materialResource) {
 					materialResource.setAlbedoComponent({1.0F, 0.86F, 0.57F, 1.0F});
 					materialResource.setRoughnessComponent(0.2F);
@@ -355,12 +361,12 @@ namespace ProjetNihil
 					return materialResource.setManualLoadSuccess(true);
 				});
 
-			toolkit.setCursor(2.0F, -0.75F, 2.0F);
+			toolkit.setCursor(2.0F, 0.75F, 2.0F);
 
 			m_goldSphere = toolkit.generateSphereInstance("GoldSphere", 0.35F, goldMaterial, false, true, 64).entity();
 
 			/* Chrome sphere - perfect mirror. */
-			const auto chromeMaterial = resources.container< Material::PBRResource >()
+			const auto chromeMaterial = resources.container< Material::StandardResource >()
 				->getOrCreateResource("ChromeMaterial", [] (auto & materialResource) {
 					materialResource.setAlbedoComponent({0.95F, 0.95F, 0.95F, 1.0F});
 					materialResource.setRoughnessComponent(0.02F);
@@ -370,12 +376,12 @@ namespace ProjetNihil
 					return materialResource.setManualLoadSuccess(true);
 				});
 
-			toolkit.setCursor(-2.0F, -0.75F, 2.0F);
+			toolkit.setCursor(-2.0F, 0.75F, 2.0F);
 
 			m_chromeSphere = toolkit.generateSphereInstance("ChromeSphere", 0.35F, chromeMaterial, false, true, 64).entity();
 
 			/* Ruby sphere - translucent gemstone with subsurface scattering. */
-			const auto rubyMaterial = resources.container< Material::PBRResource >()
+			const auto rubyMaterial = resources.container< Material::StandardResource >()
 				->getOrCreateResource("RubyMaterial", [] (auto & materialResource) {
 					materialResource.setAlbedoComponent({0.6F, 0.02F, 0.02F, 1.0F});
 					materialResource.setRoughnessComponent(0.05F);
@@ -387,12 +393,12 @@ namespace ProjetNihil
 					return materialResource.setManualLoadSuccess(true);
 				});
 
-			toolkit.setCursor(2.0F, -0.75F, -2.0F);
+			toolkit.setCursor(2.0F, 0.75F, -2.0F);
 
 			m_rubySphere = toolkit.generateSphereInstance("RubySphere", 0.35F, rubyMaterial, false, true, 64).entity();
 
 			/* Sapphire sphere - iridescent gemstone. */
-			const auto sapphireMaterial = resources.container< Material::PBRResource >()
+			const auto sapphireMaterial = resources.container< Material::StandardResource >()
 				->getOrCreateResource("SapphireMaterial", [] (auto & materialResource) {
 					materialResource.setAlbedoComponent({0.02F, 0.05F, 0.4F, 1.0F});
 					materialResource.setRoughnessComponent(0.05F);
@@ -404,14 +410,14 @@ namespace ProjetNihil
 					return materialResource.setManualLoadSuccess(true);
 				});
 
-			toolkit.setCursor(-2.0F, -0.75F, -2.0F);
+			toolkit.setCursor(-2.0F, 0.75F, -2.0F);
 
 			m_sapphireSphere = toolkit.generateSphereInstance("SapphireSphere", 0.35F, sapphireMaterial, false, true, 64).entity();
 		}
 
 		/* NOTE: Create a floating torus with an iridescent material (Toolkit + custom geometry). */
 		{
-			const auto torusMaterial = resources.container< Material::PBRResource >()
+			const auto torusMaterial = resources.container< Material::StandardResource >()
 				->getOrCreateResource("TorusMaterial", [] (auto & materialResource) {
 					materialResource.setAlbedoComponent({0.02F, 0.02F, 0.03F, 1.0F});
 					materialResource.setRoughnessComponent(0.05F);
@@ -426,7 +432,7 @@ namespace ProjetNihil
 
 			const Geometry::ResourceGenerator generator{resources, Geometry::EnableTangentSpace | Geometry::EnablePrimaryTextureCoordinates};
 
-			toolkit.setCursor(0.0F, -2.0F, 0.0F);
+			toolkit.setCursor(0.0F, 2.0F, 0.0F);
 
 			const auto torusEntity = toolkit.generateRenderableInstance< Node >(
 				"TheTorus",
@@ -597,35 +603,35 @@ namespace ProjetNihil
 					.period = 5.0F,
 					.amplitude = 0.25F,
 					.phaseOffset = 0.0F,
-					.baseY = -0.75F
+					.baseY = 0.75F
 				},
 				/* Chrome: medium, offset pi/2. */
 				{
 					.period = 3.5F,
 					.amplitude = 0.18F,
 					.phaseOffset = std::numbers::pi_v< float > * 0.5F,
-					.baseY = -0.75F
+					.baseY = 0.75F
 				},
 				/* Ruby: very slow, large, offset pi. */
 				{
 					.period = 7.0F,
 					.amplitude = 0.30F,
 					.phaseOffset = std::numbers::pi_v< float >,
-					.baseY = -0.75F
+					.baseY = 0.75F
 				},
 				/* Sapphire: medium, offset pi/4. */
 				{
 					.period = 4.2F,
 					.amplitude = 0.20F,
 					.phaseOffset = std::numbers::pi_v< float > * 0.25F,
-					.baseY = -0.75F
+					.baseY = 0.75F
 				}
 			}};
 
 			auto applySphereY = [&time] (const std::weak_ptr< StaticEntity > & weakSphere, const BobParams & params) {
 				if ( const auto sphere = weakSphere.lock() )
 				{
-					const auto y = params.baseY + (params.amplitude * std::sin((2.0F * std::numbers::pi_v< float > * time / params.period) + params.phaseOffset));
+					const auto y = params.baseY - (params.amplitude * std::sin((2.0F * std::numbers::pi_v< float > * time / params.period) + params.phaseOffset));
 
 					sphere->setYPosition(y, Math::TransformSpace::World);
 				}
@@ -640,7 +646,7 @@ namespace ProjetNihil
 		/* NOTE: Each cycle we make the camera look at the center of the scene. */
 		if ( const auto cameraNode = m_cameraNode.lock() )
 		{
-			cameraNode->lookAt({0.0F, -0.75F, 0.0F}, false);
+			cameraNode->lookAt({0.0F, 0.75F, 0.0F}, false);
 		}
 	}
 
