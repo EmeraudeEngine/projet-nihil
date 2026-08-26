@@ -30,6 +30,7 @@
 #include "config.hpp"
 
 /* Standard inclusions. */
+#include <array>
 #include <memory>
 #include <vector>
 
@@ -37,8 +38,12 @@
 #include "Core.hpp"
 #include "Scenes/StaticEntity.hpp"
 
+/* Local inclusions for usages. */
+#include "Math/Vector.hpp"
+
 /* Local inclusions. */
 #include "ApplicationSettingKeys.hpp"
+#include "Audio/SoundResource.hpp"
 #include "Graphics/Effects/Framebuffer/VolumetricLight.hpp"
 #include "Graphics/DirectPostProcessEffect.hpp"
 
@@ -167,12 +172,18 @@ namespace ProjetNihil
 			bool onCoreKeyRelease (int32_t key, int32_t scancode, int32_t modifiers) noexcept override;
 
 			/**
-			 * @brief Applies the current artistic effects state to the scene chain and the camera.
-			 * @note The tone mapping is NOT part of it: it is the sensor of the photographic
-			 * pipeline, not a creative effect. See onCoreStarted() for the whole rationale.
+			 * @brief Builds the photographic looks the space bar cycles through.
 			 * @return void
 			 */
-			void applyEffectsState () const noexcept;
+			void buildPhotographicLooks () noexcept;
+
+			/**
+			 * @brief Applies the current photographic look to the scene and the camera.
+			 * @note Tone mapping and bloom are left untouched: every look stays a correctly
+			 * exposed image.
+			 * @return void
+			 */
+			void applyLook () const noexcept;
 
 			EmEn::Help::Lexicon m_applicationHelp{"Application"};
 			std::weak_ptr< EmEn::Scenes::Node > m_cameraNode;
@@ -182,12 +193,23 @@ namespace ProjetNihil
 			std::weak_ptr< EmEn::Scenes::StaticEntity > m_chromeSphere;
 			std::weak_ptr< EmEn::Scenes::StaticEntity > m_rubySphere;
 			std::weak_ptr< EmEn::Scenes::StaticEntity > m_sapphireSphere;
-			/* The artistic effects the KeySpace shortcut toggles. The god rays live in the scene
-			 * chain (multi-pass); the lens effects are single-pass and are baked into the composite
-			 * shader, so toggling them means removing them from the camera and putting them back. */
+			/* Positions measured from the terrain at startup, so nothing sinks in a bump. */
+			EmEn::Base::Math::Vector< 3, float > m_stageCenter{0.0F, 0.75F, 0.0F};
+			std::array< float, 4 > m_sphereBaseHeights{0.75F, 0.75F, 0.75F, 0.75F};
+			/* A photographic look: a name plus a ready-made set of artistic effects the
+			 * space bar switches to. The god rays effect lives in the scene, the lens
+			 * effects on the camera. */
+			struct PhotographicLook
+			{
+				const char * name{""};
+				bool volumetricLight{false};
+				std::vector< std::shared_ptr< EmEn::Graphics::DirectPostProcessEffect > > lensEffects;
+			};
+
 			std::shared_ptr< EmEn::Graphics::Effects::Framebuffer::VolumetricLight > m_volumetricLight;
-			std::vector< std::shared_ptr< EmEn::Graphics::DirectPostProcessEffect > > m_lensEffects;
+			std::shared_ptr< EmEn::Audio::SoundResource > m_lookChime;
+			std::array< PhotographicLook, 3 > m_looks;
+			size_t m_lookIndex{0};
 			bool m_useSkyLighting{DefaultUseSkyLighting};
-			bool m_effectsEnabled{true};
 	};
 }

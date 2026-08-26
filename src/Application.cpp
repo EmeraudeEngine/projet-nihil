@@ -27,6 +27,7 @@
 #include "Application.hpp"
 
 /* Standard inclusions. */
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <numbers>
@@ -37,6 +38,8 @@
 #include "Graphics/Material/StandardResource.hpp"
 #include "Graphics/Geometry/ResourceGenerator.hpp"
 #include "Graphics/Renderable/SkyBoxResource.hpp"
+#include "Graphics/TextureResource/TextureCubemap.hpp"
+#include "Graphics/CelestialBody.hpp"
 #include "Graphics/Renderable/BasicGroundResource.hpp"
 #include "Graphics/Renderable/MeshResource.hpp"
 #include "Scenes/Component/Camera.hpp"
@@ -48,6 +51,8 @@
 #include "Graphics/Effects/Framebuffer/VolumetricLight.hpp"
 #include "Graphics/PostProcessStack.hpp"
 #include "Audio/MusicResource.hpp"
+#include "Audio/SoundResource.hpp"
+#include "WaveFactory/Synthesizer.hpp"
 #include "ApplicationSettingKeys.hpp"
 
 namespace ProjetNihil
@@ -62,59 +67,106 @@ namespace ProjetNihil
 	Application::Application (int argc, char * * argv) noexcept
 		: Core{argc, argv, ApplicationName, {ApplicationVersionMajor, ApplicationVersionMinor, ApplicationVersionPatch}, ApplicationOrganization, ApplicationDomain}
 	{
-		/* Register shortcuts. */
+		/* Register the application shortcuts (F1 shows them at runtime). */
 		m_applicationHelp.registerShortcut("Show an informative dialog box.", Input::Key::KeyF1);
-		m_applicationHelp.registerShortcut("Toggle the artistic post-processing effects.", Input::Key::KeySpace);
+		m_applicationHelp.registerShortcut("Cycle the photographic look (golden hour, silver noir, raw sensor).", Input::Key::KeySpace);
 	}
 
 #if IS_WINDOWS
 	Application::Application (int argc, wchar_t * * wargv) noexcept
 		: Core{argc, wargv, ApplicationName, {ApplicationVersionMajor, ApplicationVersionMinor, ApplicationVersionPatch}, ApplicationOrganization, ApplicationDomain}
 	{
-		/* Register shortcuts. */
+		/* Register the application shortcuts (F1 shows them at runtime). */
 		m_applicationHelp.registerShortcut("Show an informative dialog box.", Input::Key::KeyF1);
-		m_applicationHelp.registerShortcut("Toggle the artistic post-processing effects.", Input::Key::KeySpace);
+		m_applicationHelp.registerShortcut("Cycle the photographic look (golden hour, silver noir, raw sensor).", Input::Key::KeySpace);
 	}
 #endif
 
 	bool
 	Application::onBeforeCoreSecondaryServicesInitialization () noexcept
 	{
-		/* NOTE: At this moment, the core have initialized primary services like arguments, file system, settings...
-		 * All usable by a call to "this->primaryServices()". There will be no window, graphics renderer etc.
-		 * If this function returns "true", the engine will properly stop the initialization. */
-
+		/* This hook runs before the window and the renderer exist: it is the right place
+		 * to read settings. Returning "true" would abort the engine initialization. */
 		m_useSkyLighting = this->primaryServices().settings().getOrSetDefault< bool >(UseSkyLightingKey, DefaultUseSkyLighting);
 
-		/* We let the engine continuing the initialization. */
 		return false;
 	}
 
 	bool
 	Application::onCoreStarted (const Arguments & /*arguments*/, Settings & settings) noexcept
 	{
-		/* =====================================================================
-		 * NOTE: Here the engine is fully initialized,
-		 * the user application is ready to start.
-		 * This is where the user application can begin its own initialization.
-		 * ===================================================================== */
+		/* The engine is fully initialized: this hook is where the application builds its
+		 * scene. Two conventions to keep in mind while reading:
+		 *  - The world is right-handed and Y-up, and one unit is one metre.
+		 *  - Light values are real photometric units: lux for a sun, lumens for a fixture,
+		 *    nits (cd/m²) for what the sky emits. No [0..1] magic sliders. */
 
-		/* NOTE: The world is RIGHT-HANDED and Y-UP: +X goes right, +Y goes UP, -Z goes forward,
-		 * and one world unit is one metre. Every vertical value below is therefore an ALTITUDE
-		 * above the terrain - the cube floats 0.75 m up, the sun sits 10 m up. */
-
-		/* NOTE: The resource manager is provided by Core and gave access to textures, mesh, etc. */
+		/* The resource manager gives access to every resource type: textures, meshes,
+		 * materials, skyboxes... A resource is fetched by name and created on first use. */
 		auto & resources = this->resourceManager();
 
-		/* NOTE: Get the default skybox. */
-		const auto defaultSkyBox = resources.container< Renderable::SkyBoxResource >()->getDefaultResource();
+		/* === The sky ====================================================================
+		 * A skybox is more than a picture: it carries a small photometric manifest — how
+		 * bright the sky is, its average color, which celestial bodies it holds — that the
+		 * engine can turn into actual scene lighting (see applyBackgroundLighting() below).
+		 * We build a dusk sky from the engine's default sunset cubemap. */
+		const auto duskSkyBox = resources.container< Renderable::SkyBoxResource >()
+			->getOrCreateResource("DemoDuskSky", [&resources] (Renderable::SkyBoxResource & newSkyBox) {
+				/* 1000 nits is a dusk sky (a clear day is ~8000, heavy overcast ~2000). */
+				constexpr auto DuskSkyLuminance{1'000.0F};
 
-		/* NOTE: Create a ground with a polished precious stone material. */
-		const auto defaultSceneArea = resources.container< Renderable::BasicGroundResource >()
-			->getOrCreateResource("DemoBasicGround", [&resources] (Renderable::BasicGroundResource & newResource) {
+				const auto cubemap = resources.container< TextureResource::TextureCubemap >()->getDefaultResource();
+
+				/* A sky emits light instead of receiving it: an unlit, self-illuminated
+				 * material whose cubemap texels are emitted at the luminance above. */
+				const auto material = resources.container< Material::StandardResource >()
+					->getOrCreateResource("DemoDuskSkyMaterial", [cubemap] (auto & materialResource) {
+						if ( !materialResource.setAlbedoComponent(cubemap) )
+						{
+							return false;
+						}
+
+						materialResource.setAutoIlluminationComponent(1.0F);
+						materialResource.setEmissiveStrength(DuskSkyLuminance);
+						materialResource.enableUnlit();
+
+						return materialResource.setManualLoadSuccess(true);
+					}, Material::ComputePrimaryTextureCoordinates | Material::PrimaryTextureCoordinatesUses3D);
+
+				if ( !newSkyBox.load(std::static_pointer_cast< Material::Interface >(material)) )
+				{
+					return false;
+				}
+
+				/* Declare the photometry: the luminance scales the image-based lighting,
+				 * the cubemap feeds the reflections, and the ambient is the sky's average
+				 * color at a dusk-shade intensity. */
+				newSkyBox.setLuminance(DuskSkyLuminance);
+				newSkyBox.setEnvironmentCubemap(cubemap);
+				newSkyBox.setAverageColor({0.62F, 0.42F, 0.38F, 1.0F});
+				newSkyBox.setAmbientIlluminance(1'200.0F);
+
+				/* Declare a setting sun: the direction points toward it, the illuminance is
+				 * what a surface facing it receives, and the color comes from a color
+				 * temperature in kelvins, like a real bulb. */
+				CelestialBody sun;
+				sun.setDirection({-0.80F, 0.25F, 0.45F});
+				sun.setIlluminance(6'000.0F);
+				sun.setTemperature(2'700.0F);
+				newSkyBox.addStar(sun);
+
+				return true;
+			});
+
+		/* === The terrain ================================================================
+		 * An 82 m Perlin-noise ground wearing a polished dark-gemstone material. It is
+		 * loaded synchronously ("...Sync") because the placements below will immediately
+		 * ask it for its height. */
+		const auto demoGround = resources.container< Renderable::BasicGroundResource >()
+			->getOrCreateResourceSync("DemoBasicGround", [&resources] (Renderable::BasicGroundResource & newResource) {
+				/* Near-black polished obsidian: the surface mostly mirrors the dusk sky. */
 				const auto materialResource = resources.container< Material::StandardResource >()
 					->getOrCreateResource("DemoBasicGroundMaterial", [] (auto & newMaterial) {
-						/* Polished precious stone (dark sapphire/obsidian). */
 						newMaterial.setAlbedoComponent({0.005F, 0.005F, 0.015F, 1.0F});
 						newMaterial.setRoughnessComponent(0.15F);
 						newMaterial.setMetalnessComponent(0.0F);
@@ -131,40 +183,48 @@ namespace ProjetNihil
 					512,
 					materialResource,
 					{
-						/* NOTE: 'size' is a frequency in UV space - dimensionless, so it does NOT
-						 * follow the scene scale. 'factor' is a displacement in WORLD units: at
-						 * human scale the terrain rolls by 1.5 m, not 150 m. */
+						/* 'size' is the noise frequency; 'factor' is the bump height (m). */
 						.size = 5.0F,
 						.factor = 1.5F
 					}
 				);
 			});
 
-		/* NOTE: Create the new scene. */
+		/* === The scene ==================================================================
+		 * A scene is created from a name, a boundary, a background and a ground. */
 		const auto newScene = this->sceneManager().newScene(
 			"EmptyScene",
 			Physics::SI::meters(10.0F),
-			defaultSkyBox,
-			defaultSceneArea,
+			duskSkyBox,
+			demoGround,
 			nullptr
 		);
 
-		/* NOTE: Create a camera inside the scene. */
+		/* The terrain rolls by ±1.5 m, so nothing should sit at an absolute height. The
+		 * scene exposes the ground the physics uses: getLevelAt(x, z, deltaY) returns the
+		 * point deltaY metres above the local ground. Every placement below uses it. */
+		const auto groundLevel = newScene->groundLevel();
+
+		/* The stage center: where the cube rests, 0.75 m above its patch of ground. */
+		m_stageCenter = groundLevel->getLevelAt(0.0F, 0.0F, 0.75F);
+
+		/* === The camera =================================================================
+		 * A camera component on a scene node. The node follows a keyframed orbit around
+		 * the stage (30 s per revolution), sweeping between low and high viewpoints. */
 		{
 			const auto sceneNode = newScene->root()->createChild("TheCameraNode", Math::CartesianFrame{-5.12F, 0.8F, 2.56F});
 			sceneNode->componentBuilder< Component::Camera >("TheCamera").asPrimary().build(true);
-			sceneNode->lookAt(Math::Vector< 3, float >{0.0F, 0.75F, 0.0F}, false);
+			sceneNode->lookAt(m_stageCenter, false);
 
 			{
 				constexpr auto segmentCount{16U};
-				/* NOTE: In Y-up these are ALTITUDES: the camera sweeps between 0.7 m and 3.5 m
-				 * above the terrain, twice per orbit, starting at the low point. */
 				constexpr float heightMin = 0.7F;
 				constexpr float heightMax = 3.5F;
 				constexpr float heightCenter = (heightMax + heightMin) / 2.0F;
 				constexpr float heightAmplitude = (heightMax - heightMin) / 2.0F;
 
-				/* NOTE: Create the animation interpolation */
+				/* An animation is a sequence of keyframes; the engine interpolates between
+				 * them and loops. This one drives the node's world position. */
 				const auto interpolation = std::make_shared< Animations::Sequence >(30'000);
 
 				for ( uint32_t index = 0; index <= segmentCount; ++index )
@@ -174,11 +234,15 @@ namespace ProjetNihil
 
 					const auto currentAngle = timePoint * (2.0F * std::numbers::pi_v< float >);
 
-					const Math::Vector< 3, float > position{
+					Math::Vector< 3, float > position{
 						radius * std::cos(currentAngle),
 						heightCenter - (heightAmplitude * std::cos(currentAngle * 2.0F)),
 						radius * std::sin(currentAngle)
 					};
+
+					/* Never let the orbit dive below the terrain. */
+					const auto floorY = groundLevel->getLevelAt(position[0], position[2], 0.5F)[1];
+					position[1] = std::max(position[1], floorY);
 
 					interpolation->addKeyFrame(timePoint, Variant{position}, Math::InterpolationType::Linear);
 				}
@@ -191,127 +255,95 @@ namespace ProjetNihil
 			m_cameraNode = sceneNode;
 		}
 
-		/* NOTE: Use the Toolkit to build the scene lighting and decorations. */
+		/* The Toolkit is a helper that creates common scene content (lights, primitive
+		 * shapes...) in one call, at the position of its cursor. */
 		Toolkit toolkit{settings, resources, newScene};
 
-		/* NOTE: Every light quantity below is PHOTOMETRIC, in real-world units: an illuminance
-		 * in lux for a directional light (the sun), a luminous power in lumens for a point or a
-		 * spot light (what a bulb is sold as). They are not [0..1] sliders. */
+		/* === The lighting ===============================================================
+		 * Two ways to light a scene, selected by the App/UseSkyLighting setting. */
 		if ( m_useSkyLighting )
 		{
-			/* NOTE: Sky-driven lighting. The engine derives the whole scene lighting from the
-			 * photometric manifest of the background: the ambient (the average sky color times
-			 * its ambient illuminance, served by the baked IBL irradiance) plus one directional
-			 * light per declared celestial body. It is OPT-IN: nothing happens without this call.
-			 * The default skybox declares no star, so here the sky is the ONLY light source —
-			 * pure image-based lighting, no explicit light, no shadow map. Give the manifest a
-			 * "Stars" array and the same call would light and shadow the scene from its sun. */
+			/* Sky-driven (the default): one call and the engine derives the whole lighting
+			 * from the sky's manifest — the warm ambient AND a directional sun with its
+			 * shadow map. Zero further authoring. The options are only a performance
+			 * budget: the shadow map resolution and how many metres it covers. */
 			TraceInfo{ClassId} << "Using sky-driven lighting ...";
 
-			if ( !newScene->applyBackgroundLighting({.shadowMapResolution = 4096, .shadowCoverage = 500.0F}) )
+			if ( !newScene->applyBackgroundLighting({.shadowMapResolution = 4096, .shadowCoverage = 100.0F}) )
 			{
 				TraceError{ClassId} << "Unable to derive the lighting from the background!";
 			}
 		}
 		else
 		{
+			/* Hand-authored: the application places every light itself. */
 			TraceInfo{ClassId} << "Using dynamic lighting ...";
 
-			/* NOTE: A photometric ambient stands in for the sky and the bounce light, so the
-			 * shadowed sides are not pure black. A surface shadowed under a clear sky receives
-			 * 10 to 20% of the direct sun. */
-			newScene->lightSet().setAmbientLightColor({0.55F, 0.68F, 1.0F, 1.0F});
-			newScene->lightSet().setAmbientLightIntensity(2'500.0F);
+			/* An ambient so the shadowed sides are not pure black: warm rose, like the
+			 * dusk sky overhead. */
+			newScene->lightSet().setAmbientLightColor({1.0F, 0.62F, 0.45F, 1.0F});
+			newScene->lightSet().setAmbientLightIntensity(2'000.0F);
 
-			/* NOTE: A VEILED / overcast sun, 10 000 lux - the engine's own reference value for
-			 * overcast daylight. This is a deliberate lighting choice, not a scale artefact: at
-			 * 100 000 lux (clear-day direct sun) the hand-authored fixtures below would be a 2%
-			 * contribution and you would not see them at all. Lighting is about RATIOS, and this
-			 * mode exists to show what a point light and a spotlight do. Raise this to
-			 * 100'000.0F to watch the coloured lamps vanish into the sun - that is the lesson. */
-			toolkit.setCursor(-7.5F, 10.0F, 2.5F);
-			toolkit.generateDirectionalLight("TheSun", {1.0F, 0.95F, 0.85F, 1.0F}, 10'000.0F, 4096, 5.0F);
+			/* A low setting sun (the light shines from the cursor toward the origin).
+			 * 6000 lux keeps it gentle on purpose: raise it to 100'000 (a clear day) and
+			 * watch the colored lamps below disappear — lighting is about ratios. */
+			toolkit.setCursor(-8.0F, 2.0F, 4.5F);
+			toolkit.generateDirectionalLight("TheSun", {1.0F, 0.60F, 0.35F, 1.0F}, 6'000.0F, 4096, 5.0F);
 
-			/* NOTE: A point or spot light is given its LUMINOUS POWER in lumens, and its
-			 * illuminance falls off as E = I/d². At human scale the distances are metres, so
-			 * ordinary catalogue numbers work: these are large floodlights (80-100 klm, real
-			 * fixtures) hanging 2-4 m away, which lands them around 2000-4000 lux - a good
-			 * fraction of the 10 000 lux sun, so they read as clear coloured pools of light.
-			 * The 'radius' is NOT the falloff: with a physical inverse-square falloff it is only
-			 * a culling bound, set where the contribution becomes negligible. */
+			/* Helper: a circular orbit that waves up and down and never dips into a
+			 * terrain bump. */
+			const auto createOrbit = [&groundLevel] (float radius, float height, float waveAmplitude, float waveFrequency, uint32_t durationMs, bool reverse) {
+				constexpr auto segmentCount{32U};
 
-			/* Warm amber point light orbiting clockwise. */
+				const auto interpolation = std::make_shared< Animations::Sequence >(durationMs);
+
+				for ( uint32_t index = 0; index <= segmentCount; ++index )
+				{
+					const auto timePoint = static_cast< float >(index) / static_cast< float >(segmentCount);
+					const auto angle = (reverse ? -1.0F : 1.0F) * timePoint * (2.0F * std::numbers::pi_v< float >);
+
+					Math::Vector< 3, float > position{
+						radius * std::cos(angle),
+						height - (waveAmplitude * std::sin(angle * waveFrequency)),
+						radius * std::sin(angle)
+					};
+
+					const auto floorY = groundLevel->getLevelAt(position[0], position[2], 0.3F)[1];
+					position[1] = std::max(position[1], floorY);
+
+					interpolation->addKeyFrame(timePoint, Variant{position}, Math::InterpolationType::Linear);
+				}
+
+				interpolation->play();
+
+				return interpolation;
+			};
+
+			/* Two orbiting floodlights. A point light is given its power in LUMENS, like
+			 * a real catalogue fixture, and naturally falls off with distance; the 25 m
+			 * radius is only a culling bound, the last parameter a shadow map size. */
 			toolkit.setCursor(2.0F, 3.0F, 2.0F);
-			{
-				const auto warmLight = toolkit.generatePointLight< Node >("WarmLight", {1.0F, 0.7F, 0.3F, 1.0F}, 25.0F, 100'000.0F, 1024);
-				const auto warmLightNode = warmLight.entity();
+			toolkit.generatePointLight< Node >("WarmLight", {1.0F, 0.7F, 0.3F, 1.0F}, 25.0F, 100'000.0F, 1024)
+				.entity()->addAnimation(Node::WorldPosition, createOrbit(3.0F, 2.5F, 0.5F, 3.0F, 20'000, false));
 
-				constexpr auto segmentCount{32U};
-
-				const auto interpolation = std::make_shared< Animations::Sequence >(20'000);
-
-				for ( uint32_t index = 0; index <= segmentCount; ++index )
-				{
-					constexpr auto orbitHeight{2.5F};
-					constexpr auto orbitRadius{3.0F};
-					const auto timePoint = static_cast< float >(index) / static_cast< float >(segmentCount);
-					const auto angle = timePoint * (2.0F * std::numbers::pi_v< float >);
-
-					const Math::Vector< 3, float > position{
-						orbitRadius * std::cos(angle),
-						orbitHeight - (0.5F * std::sin(angle * 3.0F)),
-						orbitRadius * std::sin(angle)
-					};
-
-					interpolation->addKeyFrame(timePoint, Variant{position}, Math::InterpolationType::Linear);
-				}
-
-				interpolation->play();
-
-				warmLightNode->addAnimation(Node::WorldPosition, interpolation);
-			}
-
-			/* Cool blue point light orbiting counter-clockwise. */
 			toolkit.setCursor(-2.0F, 2.5F, -2.0F);
-			{
-				const auto coolLight = toolkit.generatePointLight< Node >("CoolLight", {0.3F, 0.5F, 1.0F, 1.0F}, 25.0F, 80'000.0F, 1024);
-				const auto coolLightNode = coolLight.entity();
+			toolkit.generatePointLight< Node >("CoolLight", {0.3F, 0.5F, 1.0F, 1.0F}, 25.0F, 80'000.0F, 1024)
+				.entity()->addAnimation(Node::WorldPosition, createOrbit(3.5F, 2.0F, 0.4F, 2.0F, 25'000, true));
 
-				constexpr auto segmentCount{32U};
-
-				const auto interpolation = std::make_shared< Animations::Sequence >(25'000);
-
-				for ( uint32_t index = 0; index <= segmentCount; ++index )
-				{
-					constexpr auto orbitHeight{2.0F};
-					constexpr auto orbitRadius{3.5F};
-					const auto timePoint = static_cast< float >(index) / static_cast< float >(segmentCount);
-					const auto angle = -timePoint * (2.0F * std::numbers::pi_v< float >);
-
-					const Math::Vector< 3, float > position{
-						orbitRadius * std::cos(angle),
-						orbitHeight - (0.4F * std::sin(angle * 2.0F)),
-						orbitRadius * std::sin(angle)
-					};
-
-					interpolation->addKeyFrame(timePoint, Variant{position}, Math::InterpolationType::Linear);
-				}
-
-				interpolation->play();
-
-				coolLightNode->addAnimation(Node::WorldPosition, interpolation);
-			}
-
-			/* Spotlight illuminating the center stage from above. The cone concentrates the flux
-			 * into ~1.14 steradian instead of 4*pi, so the same power buys roughly ten times the
-			 * candela of a point light: 80 klm at 4.25 m lands near 3900 lux on the cube. */
-			toolkit.setCursor(0.0F, 5.0F, 0.0F);
-			toolkit.generateSpotLight("CenterSpot", {0.0F, 0.75F, 0.0F}, 25.0F, 35.0F, White, 15.0F, 80'000.0F, 2048);
+			/* A white spotlight aimed at the stage from 5 m above it. */
+			toolkit.setCursor(groundLevel->getLevelAt(0.0F, 0.0F, 5.0F));
+			toolkit.generateSpotLight("CenterSpot", m_stageCenter, 25.0F, 35.0F, White, 15.0F, 80'000.0F, 2048);
 
 			newScene->lightSet().enable();
 		}
 
-		/* NOTE: Create a cube with a porcelain material. */
+		/* === The stage decorations ======================================================
+		 * Renderables are a geometry plus a material; materials are assembled from simple
+		 * components: albedo, roughness, metalness, clear coat, subsurface, iridescence...
+		 * Every placement asks the terrain for its local height. */
+
+		/* A glazed porcelain cube, resting at the stage center. The values stay modest on
+		 * purpose: a white material easily overexposes at dusk. */
 		{
 			const auto cubeResource = resources.container< Renderable::MeshResource >()
 				->getOrCreateResource("TheCubeMesh", [&resources] (Renderable::MeshResource & meshResource) {
@@ -319,14 +351,13 @@ namespace ProjetNihil
 
 					const auto material = resources.container< Material::StandardResource >()
 						->getOrCreateResource("TheCubeMaterial", [] (auto & materialResource) {
-							/* Glazed porcelain. */
 							materialResource.setAlbedoComponent({0.95F, 0.93F, 0.88F, 1.0F});
-							materialResource.setRoughnessComponent(0.08F);
+							materialResource.setRoughnessComponent(0.15F);
 							materialResource.setMetalnessComponent(0.0F);
-							materialResource.setReflectionComponentFromEnvironmentCubemap(1.0F);
+							materialResource.setReflectionComponentFromEnvironmentCubemap(0.35F);
 							materialResource.setClearCoatComponent(1.0F, 0.02F);
-							materialResource.setSubsurfaceComponent(0.4F, 1.0F, {0.95F, 0.90F, 0.85F, 1.0F});
-							materialResource.setSpecularComponent(1.5F, {1.0F, 0.98F, 0.95F, 1.0F});
+							materialResource.setSubsurfaceComponent(0.15F, 1.0F, {0.95F, 0.90F, 0.85F, 1.0F});
+							materialResource.setSpecularComponent(1.0F, {1.0F, 0.98F, 0.95F, 1.0F});
 
 							return materialResource.setManualLoadSuccess(true);
 						});
@@ -337,7 +368,7 @@ namespace ProjetNihil
 					);
 			   });
 
-			const auto sceneNode = newScene->root()->createChild("TheCubeNode", Math::CartesianFrame{0.0F, 0.75F, 0.0F});
+			const auto sceneNode = newScene->root()->createChild("TheCubeNode", Math::CartesianFrame{m_stageCenter});
 
 			sceneNode->componentBuilder< Component::Visual >("TheCube")
 				.setup([] (auto & component) {
@@ -347,9 +378,24 @@ namespace ProjetNihil
 			m_cubeNode = sceneNode;
 		}
 
-		/* NOTE: Create decorative spheres using the Toolkit (showcases the scene builder). */
+		/* Four material showcases bobbing above their own patch of ground. */
 		{
-			/* Gold sphere - polished brushed metal. */
+			/* 0.75 m of rest height = the radius (0.35) + the largest bob amplitude (0.30)
+			 * + some clearance: the bob never touches the ground. */
+			constexpr auto SphereRestAltitude{0.75F};
+
+			/* Helper: put a sphere above the local ground and remember its rest height for
+			 * the bobbing animation in onCoreProcessLogics(). */
+			const auto placeSphere = [&] (const char * name, float x, float z, const std::shared_ptr< Material::StandardResource > & material, size_t index) {
+				const auto position = groundLevel->getLevelAt(x, z, SphereRestAltitude);
+
+				toolkit.setCursor(position);
+				m_sphereBaseHeights[index] = position[1];
+
+				return toolkit.generateSphereInstance(name, 0.35F, material, false, true, 64).entity();
+			};
+
+			/* Gold - polished brushed metal. */
 			const auto goldMaterial = resources.container< Material::StandardResource >()
 				->getOrCreateResource("GoldMaterial", [] (auto & materialResource) {
 					materialResource.setAlbedoComponent({1.0F, 0.86F, 0.57F, 1.0F});
@@ -361,11 +407,9 @@ namespace ProjetNihil
 					return materialResource.setManualLoadSuccess(true);
 				});
 
-			toolkit.setCursor(2.0F, 0.75F, 2.0F);
+			m_goldSphere = placeSphere("GoldSphere", 2.0F, 2.0F, goldMaterial, 0);
 
-			m_goldSphere = toolkit.generateSphereInstance("GoldSphere", 0.35F, goldMaterial, false, true, 64).entity();
-
-			/* Chrome sphere - perfect mirror. */
+			/* Chrome - a perfect mirror. */
 			const auto chromeMaterial = resources.container< Material::StandardResource >()
 				->getOrCreateResource("ChromeMaterial", [] (auto & materialResource) {
 					materialResource.setAlbedoComponent({0.95F, 0.95F, 0.95F, 1.0F});
@@ -376,11 +420,9 @@ namespace ProjetNihil
 					return materialResource.setManualLoadSuccess(true);
 				});
 
-			toolkit.setCursor(-2.0F, 0.75F, 2.0F);
+			m_chromeSphere = placeSphere("ChromeSphere", -2.0F, 2.0F, chromeMaterial, 1);
 
-			m_chromeSphere = toolkit.generateSphereInstance("ChromeSphere", 0.35F, chromeMaterial, false, true, 64).entity();
-
-			/* Ruby sphere - translucent gemstone with subsurface scattering. */
+			/* Ruby - a translucent gemstone (subsurface scattering). */
 			const auto rubyMaterial = resources.container< Material::StandardResource >()
 				->getOrCreateResource("RubyMaterial", [] (auto & materialResource) {
 					materialResource.setAlbedoComponent({0.6F, 0.02F, 0.02F, 1.0F});
@@ -393,11 +435,9 @@ namespace ProjetNihil
 					return materialResource.setManualLoadSuccess(true);
 				});
 
-			toolkit.setCursor(2.0F, 0.75F, -2.0F);
+			m_rubySphere = placeSphere("RubySphere", 2.0F, -2.0F, rubyMaterial, 2);
 
-			m_rubySphere = toolkit.generateSphereInstance("RubySphere", 0.35F, rubyMaterial, false, true, 64).entity();
-
-			/* Sapphire sphere - iridescent gemstone. */
+			/* Sapphire - an iridescent gemstone (thin-film interference, in nanometres). */
 			const auto sapphireMaterial = resources.container< Material::StandardResource >()
 				->getOrCreateResource("SapphireMaterial", [] (auto & materialResource) {
 					materialResource.setAlbedoComponent({0.02F, 0.05F, 0.4F, 1.0F});
@@ -410,12 +450,11 @@ namespace ProjetNihil
 					return materialResource.setManualLoadSuccess(true);
 				});
 
-			toolkit.setCursor(-2.0F, 0.75F, -2.0F);
-
-			m_sapphireSphere = toolkit.generateSphereInstance("SapphireSphere", 0.35F, sapphireMaterial, false, true, 64).entity();
+			m_sapphireSphere = placeSphere("SapphireSphere", -2.0F, -2.0F, sapphireMaterial, 3);
 		}
 
-		/* NOTE: Create a floating torus with an iridescent material (Toolkit + custom geometry). */
+		/* An iridescent torus floating 2 m above the stage: same recipe as the cube, but
+		 * with a custom geometry from the generator. */
 		{
 			const auto torusMaterial = resources.container< Material::StandardResource >()
 				->getOrCreateResource("TorusMaterial", [] (auto & materialResource) {
@@ -432,7 +471,7 @@ namespace ProjetNihil
 
 			const Geometry::ResourceGenerator generator{resources, Geometry::EnableTangentSpace | Geometry::EnablePrimaryTextureCoordinates};
 
-			toolkit.setCursor(0.0F, 2.0F, 0.0F);
+			toolkit.setCursor(groundLevel->getLevelAt(0.0F, 0.0F, 2.0F));
 
 			const auto torusEntity = toolkit.generateRenderableInstance< Node >(
 				"TheTorus",
@@ -443,7 +482,9 @@ namespace ProjetNihil
 			m_torusNode = torusEntity.entity();
 		}
 
-		/* NOTE: Start the parametric music (generated procedurally by the engine). */
+		/* === The audio ==================================================================
+		 * Play the engine's procedurally generated music, and synthesize a little chime
+		 * from scratch for the space bar: two short ascending sine notes. */
 		{
 			const auto music = resources.container< Audio::MusicResource >()->getDefaultResource();
 
@@ -451,43 +492,51 @@ namespace ProjetNihil
 			trackMixer.addToPlaylist(music);
 			trackMixer.setVolume(0.5F);
 			trackMixer.play();
+
+			m_lookChime = resources.container< Audio::SoundResource >()
+				->getOrCreateResource("LookChime", [this] (Audio::SoundResource & soundResource) {
+					const auto frequency = this->audioManager().frequencyPlayback();
+					const auto noteLength = static_cast< size_t >(frequency) / 14; /* ~70 ms per note. */
+
+					WaveFactory::Synthesizer synth{soundResource.localData(), noteLength * 2, frequency};
+
+					/* A first note (A5) with a short, percussive envelope... */
+					synth.setRegion(0, noteLength);
+
+					if ( !synth.sineWave(880.0F, 0.35F) || !synth.applyADSR(0.005F, 0.01F, 0.6F, 0.03F) )
+					{
+						return false;
+					}
+
+					/* ... then a second one (E6), a fifth above. */
+					synth.setRegion(noteLength, noteLength);
+
+					if ( !synth.sineWave(1'318.5F, 0.30F) || !synth.applyADSR(0.005F, 0.01F, 0.6F, 0.04F) )
+					{
+						return false;
+					}
+
+					return soundResource.setManualLoadSuccess(true);
+				});
 		}
 
-		/* =====================================================================
-		 * NOTE: Post-processing. There are THREE distinct layers here, and telling them
-		 * apart is the whole lesson of this block:
-		 *
-		 *  1. The SENSOR (tone mapping). The scene is lit in real photometric units — the sun
-		 *     above is 10 000 lux, the sky 8000 nits — so the renderer produces physical
-		 *     radiance, not [0..1] colors. A screen cannot show that. The tone mapper is what
-		 *     maps the one onto the other, exactly like the sensor of a real camera, and it is
-		 *     therefore NOT optional and NOT an "effect": without it the raw radiance reaches
-		 *     an LDR swap-chain and a daylight scene comes out pure white. It is declared on
-		 *     the CAMERA (the photographic authority) and stays on in both modes below.
-		 *
-		 *  2. The OPTICS (bloom). Veiling glare is light scattering inside the lens, so it
-		 *     applies to the image the optics have already formed — after the defocus, before
-		 *     the sensor. Declaring it on the camera is what puts it at that place in the
-		 *     chain; the engine materializes it there for us. Its threshold is an absolute
-		 *     scene luminance in nits, and its intensity the FRACTION of energy the glass
-		 *     scatters (a clean lens: a few percent), not an artistic gain.
-		 *
-		 *  3. The ARTISTIC pass (god rays, grading, vignetting, grain). This is the only
-		 *     layer that is a matter of taste, and the only one the KeySpace shortcut toggles.
-		 * ===================================================================== */
+		/* === Post-processing ============================================================
+		 * Three layers, from mandatory to optional:
+		 *  1. Tone mapping (the camera "sensor"): scales the physical radiance down to
+		 *     what a screen can show. Not an effect — an HDR scene is unwatchable raw.
+		 *  2. Bloom (the camera "optics"): light scattering in the lens, thresholded in
+		 *     nits, a few percent of intensity.
+		 *  3. The artistic effects: the only layer that is a matter of taste. The space
+		 *     bar cycles three ready-made looks — see buildPhotographicLooks(). */
 		{
-			auto & renderer = this->graphicsRenderer();
-
-			/* Multi-pass effects → PostProcessStack owned by Scene. */
+			/* God rays are a scene-level (multi-pass) effect, so they go into the scene's
+			 * post-process stack; they follow the sun direction automatically. */
 			{
 				const auto & windowState = this->window().state();
 
 				auto stack = std::make_unique< PostProcessStack >();
 
-				/* Volumetric light (God Rays) matching the sun direction. Kept as an
-				 * application-authored scene effect: it is a property of the ATMOSPHERE, it
-				 * needs the light set, and it is not part of the camera body. */
-				m_volumetricLight = std::make_shared< Framebuffer::VolumetricLight >(renderer, Framebuffer::VolumetricLight::Parameters{
+				m_volumetricLight = std::make_shared< Framebuffer::VolumetricLight >(this->graphicsRenderer(), Framebuffer::VolumetricLight::Parameters{
 					.density = 0.8F,
 					.decay = 0.98F,
 					.exposure = 0.15F,
@@ -509,82 +558,51 @@ namespace ProjetNihil
 			{
 				if ( const auto camera = cameraNode->getComponent< Component::Camera >("TheCamera") )
 				{
-					/* 1. The sensor: HDR rendering with the auto-exposure metering the scene. */
+					/* 1. The sensor: HDR rendering, auto-exposure metering the scene. */
 					camera->enableHDR(true);
 					camera->setExposureCompensation(-0.3F);
 
-					/* 2. The optics: the sky sits around 8000 nits, so glare only on what is
-					 * brighter than that — the sun-lit highlights of the metals and the gems. */
-					camera->setBloomThreshold(9'000.0F);
+					/* 2. The optics: glare only above 3000 nits — the sun's specular
+					 * highlights on the metals and the gems, not the porcelain. */
+					camera->setBloomThreshold(3'000.0F);
 					camera->setBloomIntensity(0.04F);
 					camera->enableBloom(true);
-
-					/* 3. The artistic pass, single-pass lens effects. Kept so KeySpace can put
-					 * them back: the composite shader is generated from the camera's effect
-					 * LIST, so disabling one means taking it off the camera (the program cache
-					 * makes putting the same set back a hit, not a rebuild). */
-					{
-						/* Subtle radial chromatic aberration (lens fringing). */
-						auto chromaticAberration = std::make_shared< Lens::ChromaticAberration >(0.003F);
-						chromaticAberration->enableRadial(true);
-						m_lensEffects.emplace_back(std::move(chromaticAberration));
-
-						/* Gentle warm color grading. */
-						auto colorGrading = std::make_shared< Lens::ColorGrading >();
-						colorGrading->setSaturation(1.1F);
-						colorGrading->setHue(0.06F);
-						colorGrading->setContrast(1.1F);
-						colorGrading->setBrightness(0.02F);
-						colorGrading->setGamma(1.05F);
-						m_lensEffects.emplace_back(std::move(colorGrading));
-
-						/* Light cinematic vignetting. */
-						auto vignetting = std::make_shared< Lens::Vignetting >(0.4F);
-						vignetting->setRadius(0.45F);
-						vignetting->setSoftness(0.55F);
-						m_lensEffects.emplace_back(std::move(vignetting));
-
-						/* Barely perceptible film grain. */
-						auto filmGrain = std::make_shared< Lens::FilmGrain >(0.05F);
-						filmGrain->setSize(1.0F);
-						m_lensEffects.emplace_back(std::move(filmGrain));
-					}
 				}
 			}
 
-			/* NOTE: The renderer master switch is a global kill-switch — it would take the tone
-			 * mapping down with everything else. It defaults to ON and an application has no
-			 * reason to touch it: a scene with nothing to run pays nothing anyway. Our own
-			 * toggle below is selective, which is why the image stays viewable in both states. */
-			renderer.postProcessor().enable(true);
+			/* 3. The artistic layer. */
+			this->buildPhotographicLooks();
 
-			this->applyEffectsState();
+			this->applyLook();
 		}
 
-		/* NOTE: Enable the new scene. */
+		/* Enable the scene, and tell Core we are OK to run. */
 		this->sceneManager().enableScene(newScene);
 
-		/* Tells Core we are OK to run the application. */
 		return true;
 	}
 
 	void
 	Application::onCoreProcessLogics (size_t engineCycle) noexcept
 	{
-		/* NOTE: Rotate the porcelain cube around its vertical axis. */
+		/* This hook runs every logic cycle, on the main thread: the place for simple,
+		 * per-frame animation logic. */
+
+		/* Spin the cube around its vertical axis. */
 		if ( const auto cubeNode = m_cubeNode.lock() )
 		{
 			cubeNode->yaw(0.01F, Math::TransformSpace::World);
 		}
 
-		/* NOTE: Rotate the torus slowly around two axes for a floating effect. */
+		/* Tumble the torus slowly around two axes. */
 		if ( const auto torusNode = m_torusNode.lock() )
 		{
 			torusNode->yaw(0.005F, Math::TransformSpace::World);
 			torusNode->pitch(0.003F, Math::TransformSpace::Local);
 		}
 
-		/* NOTE: Bobbing spheres: each with different period, amplitude, and phase offset. */
+		/* Bob each sphere around its rest height, each with its own rhythm.
+		 * Periods are seconds; amplitudes are metres. */
 		{
 			const auto time = static_cast< float >(engineCycle) * WorldPhysicsUpdateCycleDurationS< float >;
 
@@ -592,61 +610,54 @@ namespace ProjetNihil
 				float period;
 				float amplitude;
 				float phaseOffset;
-				float baseY;
 			};
 
 			constexpr std::array< BobParams, 4 > bobbing{{
-				/* NOTE: The periods are SECONDS and do not scale; the amplitudes and the base
-				 * height are world units, so they do: the spheres bob by 20-30 cm, not 30 m. */
 				/* Gold: slow, large. */
 				{
 					.period = 5.0F,
 					.amplitude = 0.25F,
-					.phaseOffset = 0.0F,
-					.baseY = 0.75F
+					.phaseOffset = 0.0F
 				},
 				/* Chrome: medium, offset pi/2. */
 				{
 					.period = 3.5F,
 					.amplitude = 0.18F,
-					.phaseOffset = std::numbers::pi_v< float > * 0.5F,
-					.baseY = 0.75F
+					.phaseOffset = std::numbers::pi_v< float > * 0.5F
 				},
 				/* Ruby: very slow, large, offset pi. */
 				{
 					.period = 7.0F,
 					.amplitude = 0.30F,
-					.phaseOffset = std::numbers::pi_v< float >,
-					.baseY = 0.75F
+					.phaseOffset = std::numbers::pi_v< float >
 				},
 				/* Sapphire: medium, offset pi/4. */
 				{
 					.period = 4.2F,
 					.amplitude = 0.20F,
-					.phaseOffset = std::numbers::pi_v< float > * 0.25F,
-					.baseY = 0.75F
+					.phaseOffset = std::numbers::pi_v< float > * 0.25F
 				}
 			}};
 
-			auto applySphereY = [&time] (const std::weak_ptr< StaticEntity > & weakSphere, const BobParams & params) {
+			auto applySphereY = [&time] (const std::weak_ptr< StaticEntity > & weakSphere, const BobParams & params, float baseY) {
 				if ( const auto sphere = weakSphere.lock() )
 				{
-					const auto y = params.baseY - (params.amplitude * std::sin((2.0F * std::numbers::pi_v< float > * time / params.period) + params.phaseOffset));
+					const auto y = baseY - (params.amplitude * std::sin((2.0F * std::numbers::pi_v< float > * time / params.period) + params.phaseOffset));
 
 					sphere->setYPosition(y, Math::TransformSpace::World);
 				}
 			};
 
-			applySphereY(m_goldSphere,     bobbing[0]);
-			applySphereY(m_chromeSphere,   bobbing[1]);
-			applySphereY(m_rubySphere,     bobbing[2]);
-			applySphereY(m_sapphireSphere, bobbing[3]);
+			applySphereY(m_goldSphere,     bobbing[0], m_sphereBaseHeights[0]);
+			applySphereY(m_chromeSphere,   bobbing[1], m_sphereBaseHeights[1]);
+			applySphereY(m_rubySphere,     bobbing[2], m_sphereBaseHeights[2]);
+			applySphereY(m_sapphireSphere, bobbing[3], m_sphereBaseHeights[3]);
 		}
 
-		/* NOTE: Each cycle we make the camera look at the center of the scene. */
+		/* Keep the camera aimed at the stage while it travels its orbit. */
 		if ( const auto cameraNode = m_cameraNode.lock() )
 		{
-			cameraNode->lookAt({0.0F, 0.75F, 0.0F}, false);
+			cameraNode->lookAt(m_stageCenter, false);
 		}
 	}
 
@@ -655,6 +666,7 @@ namespace ProjetNihil
 	{
 		using namespace PlatformSpecific::Desktop;
 
+		/* F1: an "about" dialog box. Returning "true" consumes the event. */
 		if ( key == Input::Key::KeyF1 )
 		{
 			std::stringstream message;
@@ -673,58 +685,113 @@ namespace ProjetNihil
 
 			dialog.execute(this->window());
 
-			/* NOTE: Tells Core we consumed the event. */
 			return true;
 		}
 
+		/* Space bar: next photographic look. */
 		if ( key == Input::Key::KeySpace )
 		{
-			m_effectsEnabled = !m_effectsEnabled;
+			m_lookIndex = (m_lookIndex + 1) % m_looks.size();
 
-			this->applyEffectsState();
+			this->applyLook();
 
-			TraceInfo{ClassId} << "Artistic effects " << ( m_effectsEnabled ? "enabled" : "disabled" ) << ".";
+			/* The synthesized chime, as an audible acknowledgment. */
+			this->audioManager().play(m_lookChime, Audio::PlayMode::Once, 0.6F);
+
+			TraceInfo{ClassId} << "Photographic look: " << m_looks.at(m_lookIndex).name << ".";
 
 			return true;
 		}
 
-		/* NOTE: Tells Core we don't consume the event. */
 		return false;
 	}
 
 	void
-	Application::applyEffectsState () const noexcept
+	Application::buildPhotographicLooks () noexcept
 	{
-		/* NOTE: Only the ARTISTIC layer moves. The tone mapping (the sensor) and the bloom (the
-		 * optics) stay exactly as they are, so both states are a photographically valid image:
-		 * "off" is the raw rendered frame, not a broken one. That is the whole point of the
-		 * comparison - press KeySpace and you see what the grading adds, not what the exposure
-		 * pipeline was hiding. */
+		/* A look only changes the artistic layer: tone mapping and bloom stay untouched,
+		 * so every look remains a correctly exposed image. */
 
-		/* The god rays live in the scene chain, whose executor honours the per-effect flag: a
-		 * plain enable/disable, no pipeline rebuild. */
-		if ( m_volumetricLight != nullptr )
+		/* "Golden hour": warm grade, subtle lens flaws, god rays. */
 		{
-			m_volumetricLight->enable(m_effectsEnabled);
+			auto & look = m_looks[0];
+			look.name = "Golden hour";
+			look.volumetricLight = true;
+
+			auto chromaticAberration = std::make_shared< Lens::ChromaticAberration >(0.003F);
+			chromaticAberration->enableRadial(true);
+			look.lensEffects.emplace_back(std::move(chromaticAberration));
+
+			auto colorGrading = std::make_shared< Lens::ColorGrading >();
+			colorGrading->setSaturation(1.15F);
+			colorGrading->setHue(0.06F);
+			colorGrading->setContrast(1.1F);
+			colorGrading->setBrightness(0.02F);
+			colorGrading->setGamma(1.05F);
+			look.lensEffects.emplace_back(std::move(colorGrading));
+
+			auto vignetting = std::make_shared< Lens::Vignetting >(0.4F);
+			vignetting->setRadius(0.45F);
+			vignetting->setSoftness(0.55F);
+			look.lensEffects.emplace_back(std::move(vignetting));
+
+			auto filmGrain = std::make_shared< Lens::FilmGrain >(0.05F);
+			filmGrain->setSize(1.0F);
+			look.lensEffects.emplace_back(std::move(filmGrain));
 		}
 
-		/* The lens effects are single-pass and are compiled INTO the composite shader, so the
-		 * camera's effect list is the program cache key: the only way to turn one off is to take
-		 * it off the list. */
+		/* "Silver noir": the same scene through a monochrome, contrasty, grainy eye. */
+		{
+			auto & look = m_looks[1];
+			look.name = "Silver noir";
+			look.volumetricLight = false;
+
+			auto colorGrading = std::make_shared< Lens::ColorGrading >();
+			colorGrading->setSaturation(0.10F);
+			colorGrading->setContrast(1.4F);
+			colorGrading->setGamma(0.95F);
+			look.lensEffects.emplace_back(std::move(colorGrading));
+
+			auto vignetting = std::make_shared< Lens::Vignetting >(0.65F);
+			vignetting->setRadius(0.4F);
+			vignetting->setSoftness(0.5F);
+			look.lensEffects.emplace_back(std::move(vignetting));
+
+			auto filmGrain = std::make_shared< Lens::FilmGrain >(0.12F);
+			filmGrain->setSize(1.3F);
+			look.lensEffects.emplace_back(std::move(filmGrain));
+		}
+
+		/* "Raw sensor": no artistic effect at all. */
+		{
+			auto & look = m_looks[2];
+			look.name = "Raw sensor";
+			look.volumetricLight = false;
+		}
+	}
+
+	void
+	Application::applyLook () const noexcept
+	{
+		const auto & look = m_looks.at(m_lookIndex);
+
+		/* The god rays are toggled in place in the scene's post-process stack. */
+		if ( m_volumetricLight != nullptr )
+		{
+			m_volumetricLight->enable(look.volumetricLight);
+		}
+
+		/* The lens effects are compiled into the camera's shader, so applying a look means
+		 * swapping the camera's effect list (a look already seen is a shader cache hit). */
 		if ( const auto cameraNode = m_cameraNode.lock() )
 		{
 			if ( const auto camera = cameraNode->getComponent< Component::Camera >("TheCamera") )
 			{
-				if ( m_effectsEnabled )
+				camera->clearLensEffects();
+
+				for ( const auto & lensEffect : look.lensEffects )
 				{
-					for ( const auto & lensEffect : m_lensEffects )
-					{
-						camera->addLensEffect(lensEffect);
-					}
-				}
-				else
-				{
-					camera->clearLensEffects();
+					camera->addLensEffect(lensEffect);
 				}
 			}
 		}

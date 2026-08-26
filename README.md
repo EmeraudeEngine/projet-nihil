@@ -79,15 +79,16 @@ The binary lands in `cmake-build-<config>/<Config>/projet-nihil` — `.exe` on W
 `projet-nihil.app` bundle on macOS. Any CMake-aware IDE (CLion, Visual Studio, VSCode) works:
 open the folder, let it configure, build.
 
-You should see a dark, polished stone terrain under a skybox, with a rotating porcelain cube, a
-floating iridescent torus, bobbing spheres, and a camera orbiting the scene.
+You should see a dusk sky over a dark, polished stone terrain, a rotating porcelain cube, a
+floating iridescent torus, bobbing gem and metal spheres lit by a low warm sun, and a camera
+orbiting the stage.
 
 ## Controls
 
 | Key | Action |
 |---|---|
 | **F1** | Show the application information dialog. |
-| **Space** | Toggle the *artistic* post-processing layer (see below). |
+| **Space** | Cycle the photographic look: *golden hour* → *silver noir* → *raw sensor* (see below), with an on-screen notification and a small chime synthesized by the engine. |
 
 These two are the *application's* shortcuts — the ones registered in `Application::Application()`.
 The engine contributes its own on top (`Shift+F1…F12`, `Shift+Escape`, screenshot, editor
@@ -111,10 +112,13 @@ Read `src/Application.cpp` in order — it is written as a guided tour:
 | `onCoreProcessLogics(engineCycle)` | Per-cycle update loop — rotations, bobbing, camera aim. |
 | `onCoreKeyRelease(key, scancode, modifiers)` | Input handling and application shortcuts. |
 
-Along the way: **resource loading** through the resource manager (meshes, PBR materials,
-geometry), **procedural terrain** from Perlin noise, a **scene graph** of nodes with transforms,
-**keyframe animations** with interpolation, the **Toolkit** scene builder, and procedurally
-generated background music.
+Along the way: a **photometric skybox authored in code** (luminance, ambient, a declared
+setting sun), **resource loading** through the resource manager (meshes, PBR materials,
+geometry), **procedural terrain** from Perlin noise with **terrain-relative placement**, a
+**scene graph** of nodes with transforms, **keyframe animations** with interpolation, the
+**Toolkit** scene builder, on-screen notifications (`Core::notifyUser()`), procedurally
+generated background music, and a notification chime synthesized from scratch with
+`WaveFactory::Synthesizer`.
 
 ### Everything is in metres, and that matters
 
@@ -144,8 +148,8 @@ When editing the scene, know which numbers follow the scale and which do not:
 
 The engine world is **right-handed and Y-up** (`+X` right, `+Y` up, `-Z` forward), the convention
 of glTF 2.0, USD and FBX. Every vertical number in `onCoreStarted()` therefore reads directly as an
-**altitude above the terrain**: the cube floats at `0.75F`, the sun sits at `10.0F`, the camera
-sweeps between 0.7 m and 3.5 m. Only the verticals are concerned — X/Z, radii, angles and periods
+**altitude**: the cube rests 0.75 m above its patch of ground, the camera sweeps between 0.7 m
+and 3.5 m. Only the verticals are concerned — X/Z, radii, angles and periods
 mean the same thing in any convention. The full contract, and why the engine left Y-down, belongs
 to the engine:
 [`docs/coordinate-system.md`](https://github.com/EmeraudeEngine/emeraude-engine/blob/main/docs/coordinate-system.md).
@@ -156,19 +160,36 @@ to the engine:
 
 | Mode | What it does |
 |---|---|
-| **Sky-driven** (`true`, default) | `Scene::applyBackgroundLighting()` — the engine derives the whole lighting from the background's photometric manifest: ambient (average sky colour × ambient illuminance, served by the baked IBL irradiance) plus one directional light per declared celestial body. The default skybox declares **no star**, so the sky is the only light source: pure image-based lighting, no shadow map, zero authoring. |
-| **Dynamic** (`false`) | Hand-authored: a 10 000 lx veiled sun with a 4096² shadow map, two animated orbiting 80–100 klm floodlights, a spotlight, and an explicit 2 500 lx ambient so shadowed sides are not black. |
+| **Sky-driven** (`true`, default) | `Scene::applyBackgroundLighting()` — the engine derives the whole lighting from the background's photometric manifest: ambient (average sky colour × ambient illuminance, served by the baked IBL irradiance) plus one directional light per declared celestial body. The demo's dusk sky declares **one setting sun** (2700 K, 6000 lx, ~14° high), so this single call produces the warm ambient *and* a sun with a 4096² shadow map — the whole lighting, zero further authoring. Remove the star from the manifest and the same call falls back to pure image-based lighting. |
+| **Dynamic** (`false`) | Hand-authored: a 6 000 lx setting sun with a 4096² shadow map, two animated orbiting 80–100 klm floodlights, a spotlight, and an explicit 2 000 lx warm ambient so shadowed sides are not black. |
 
 > [!NOTE]
-> The dynamic mode's sun is deliberately a **10 000 lx overcast** one, not a clear-day 100 000 lx.
-> At 100 000 lx the hand-authored fixtures — the whole point of that mode — contribute ~2% and
-> become invisible. Lighting is about **ratios**; raising the sun back to `100'000.0F` to watch
-> the coloured lamps vanish is the intended experiment.
+> The dynamic mode's sun is deliberately a **gentle 6 000 lx setting sun**, not a clear-day
+> 100 000 lx. At 100 000 lx the hand-authored fixtures — the whole point of that mode —
+> contribute ~2% and become invisible. Lighting is about **ratios**; raising the sun to
+> `100'000.0F` to watch the coloured lamps vanish is the intended experiment.
+
+### The sky is a light source you author
+
+The engine's default skybox emits its sunset cubemap at a clear-day luminance and declares no
+celestial body. The demo builds its own `DemoDuskSky` instead (the first block of
+`onCoreStarted()`): the same cubemap, but a dusk luminance (1000 nits), a warm average colour,
+an ambient illuminance, and one declared setting sun. This photometric manifest is exactly what
+a JSON skybox would declare — the demo simply writes it in code.
+
+### Nothing sits at an absolute height
+
+The terrain is a Perlin surface rolling by ±1.5 m, so every decoration asks the scene's ground
+— the same `GroundLevelInterface` the physics uses — for its local height
+(`getLevelAt(x, z, deltaY)`) and sits **relative to it**; the camera orbit and the orbiting
+lights clamp their keyframes above it. This is also why the ground is created with
+`getOrCreateResourceSync()`: the placements need the terrain to exist immediately (the plain,
+asynchronous variant would silently answer height 0 until loaded).
 
 ### Post-processing: three layers, only one is a matter of taste
 
 `onCoreStarted()` separates them explicitly, and the **Space** shortcut moves only the third
-(see `Application::applyEffectsState()`):
+(see `Application::buildPhotographicLooks()` and `applyLook()`):
 
 1. **The sensor — tone mapping.** `camera->enableHDR(true)`. Mandatory, not an effect: the
    renderer produces physical radiance and a screen cannot show it. Without it, a daylight scene
@@ -178,8 +199,10 @@ to the engine:
    threshold is an absolute luminance in **nits**, its intensity the **fraction** of energy the
    glass scatters (a clean lens: a few percent) — not an artistic gain.
 3. **The artistic pass** — god rays (scene chain) plus colour grading, vignetting, chromatic
-   aberration and film grain (camera lens effects). The only creative layer, and the only one the
-   shortcut toggles — which is why both states stay photographically valid.
+   aberration and film grain (camera lens effects). The only creative layer, packaged as three
+   ready-made **looks** the shortcut cycles: *golden hour* (warm grade, god rays), *silver noir*
+   (monochrome, contrasty) and *raw sensor* (no artistic effect at all). Tone mapping and bloom
+   never move, so every look stays photographically valid.
 
 > [!IMPORTANT]
 > Never toggle `Renderer::postProcessor().enable()` from an application: it is a global

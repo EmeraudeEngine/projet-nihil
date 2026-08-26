@@ -79,19 +79,21 @@ A reader should be able to follow `onCoreStarted()` top-to-bottom and learn:
 - **Camera** — an animated camera with smooth interpolation.
 - **Lighting** — sky-driven vs hand-authored dynamic lighting (toggleable), in real
   photometric units.
-- **Post-processing** — the sensor / optics / artistic split, and what a toggle should move.
+- **Post-processing** — the sensor / optics / artistic split, and the three cycling
+  photographic looks (golden hour, silver noir, raw sensor).
 - **Animations** — keyframe-based animation with interpolation.
-- **Input** — keyboard events and shortcuts.
+- **Input & feedback** — keyboard events, on-screen notifications (`Core::notifyUser()`), and a
+  chime synthesized from scratch (`WaveFactory::Synthesizer` into an `Audio::SoundResource`).
 
-### Lighting: the two modes (Jul 2026)
+### Lighting: the two modes (Jul 2026, dusk revamp Sep 2026)
 
 The `App/UseSkyLighting` setting (`src/ApplicationSettingKeys.hpp`, default `true`) picks
 between the two, and each teaches a different half of the engine's lighting model:
 
 | Mode | What it does |
 |------|--------------|
-| **Sky-driven** (`true`, default) | `Scene::applyBackgroundLighting()` — the engine derives the whole lighting from the background's photometric manifest: ambient (average sky color × ambient illuminance, served by the baked IBL irradiance) plus one directional light per declared celestial body. The default skybox declares **no star**, so the sky is the only light source: pure image-based lighting, no shadow map. |
-| **Dynamic** (`false`) | Hand-authored: a 10 000 lx veiled sun with a 4096² shadow map, two animated orbiting 80–100 klm floodlights, a spotlight, and an explicit 2 500 lx ambient so shadowed sides are not black. |
+| **Sky-driven** (`true`, default) | `Scene::applyBackgroundLighting()` — the engine derives the whole lighting from the background's photometric manifest: ambient (average sky color × ambient illuminance, served by the baked IBL irradiance) plus one directional light per declared celestial body. The demo's authored dusk sky declares **one setting sun** (2700 K, 6000 lx, ~14° high), so the single call produces the warm ambient AND a directional light with a 4096² shadow map — the whole lighting, zero further authoring. Remove the star from the manifest and the call falls back to pure image-based lighting. |
+| **Dynamic** (`false`) | Hand-authored: a 6 000 lx setting sun with a 4096² shadow map, two animated orbiting 80–100 klm floodlights, a spotlight, and an explicit 2 000 lx warm ambient so shadowed sides are not black. |
 
 > [!IMPORTANT]
 > **The old "static lighting" mode is gone.** `LightSet::enableAsStaticLighting()` and
@@ -126,10 +128,44 @@ When editing the scene, know which numbers follow the scale and which do not:
 | | iridescence film thickness (**nanometres**), bloom threshold (**nits**), roughness/metalness |
 
 > [!NOTE]
-> The dynamic mode's sun is deliberately a **10 000 lx overcast** one, not clear-day 100 000 lx.
-> At 100 000 lx the hand-authored fixtures — the whole point of that mode — contribute ~2% and
-> are invisible. Lighting is about **ratios**; raising the sun back to `100'000.0F` to watch the
-> coloured lamps vanish is the intended experiment, and the comment in `onCoreStarted()` says so.
+> The dynamic mode's sun is deliberately a **gentle 6 000 lx setting sun**, not clear-day
+> 100 000 lx. At 100 000 lx the hand-authored fixtures — the whole point of that mode —
+> contribute ~2% and are invisible. Lighting is about **ratios**; raising the sun to
+> `100'000.0F` to watch the coloured lamps vanish is the intended experiment.
+
+### The dusk revamp (Sep 2026) — measured traps to preserve
+
+The demo was rebuilt around an **authored dusk sky** after the PBR/HDR (nits) engine pass left
+the old version bright, white and flat. What was measured then, and must not be re-learned:
+
+- **The default SKYBOX is a trap for a demo**: its cubemap is a retro *sunset* gradient, but it
+  emits at `DaylightSkyLuminance` (8000 nits) and declares **no celestial body** — a huge
+  direction-less white-ish dome. The demo authors `DemoDuskSky` instead: same cubemap, 1000 nits,
+  warm average color, 1200 lx ambient, one declared 2700 K / 6000 lx setting sun. That manifest
+  is what `applyBackgroundLighting()` consumes.
+- **`SkyBoxResource::load(material)` leaves the photometry AND the IBL source to the caller**:
+  `setLuminance()` must match the material's emissive strength, and `setEnvironmentCubemap()`
+  must be called explicitly — without it the sky renders fine while every surface reflects the
+  default environment (the setter's doc says so; verified).
+- **The ground must be created with `getOrCreateResourceSync()`**: the plain
+  `getOrCreateResource()` defers loading to a loader thread, and until it lands
+  `GroundLevelInterface::getLevelAt()` silently answers **0** (measured: every probe flat while
+  the terrain visibly rolled). All placements are terrain-relative, so the grid must exist first.
+- **The bloom threshold must sit above the brightest DIFFUSE surface.** At dusk the sun-lit
+  porcelain reaches ~2400 nits; a 1500-nit threshold bloomed the whole cube into a white blob
+  (measured). It sits at 3000 nits: glare for the metal/gem speculars only.
+- **A white glazed material easily washes out**: full-strength environment reflection + hot
+  specular + deep subsurface on a white albedo flattened every cube face to the same white. The
+  porcelain keeps modest values (reflection 0.35, specular 1.0, subsurface 0.15).
+- **Verification workflow**: the engine's `tools/demo-capture-bench.py` works with nihil —
+  enable `Core/Console/EnableRemoteListener` in the user settings and pass any `--demo` value
+  (nihil ignores it and always builds its scene).
+
+### Comment policy: an invitation, not a wall (Sep 2026)
+
+`Application.cpp` is read by people **discovering** the engine. Its comments are short and
+didactic — *how you do X with the engine* — never internal development notes, war stories or
+measurement logs (those live here). When editing the demo, keep that register.
 
 ### World convention: Y-up (Aug 2026)
 
@@ -156,6 +192,12 @@ The vertical oscillations kept their **exact motion**: negating `base + A·sin(�
 a positive magnitude. The demo renders as it did before the flip.
 
 > [!NOTE]
+> **Since Sep 2026 the placements are TERRAIN-RELATIVE**: the scene queries
+> `Scene::groundLevel()->getLevelAt(x, z, deltaY)` (the same `GroundLevelInterface` the physics
+> uses), so the altitudes in the table above are now *deltas above the local Perlin ground*, and
+> the camera orbit and the orbiting lights clamp their keyframes above it.
+
+> [!NOTE]
 > **Only the world verticals moved.** X/Z coordinates, radii, cone angles, animation periods, lux
 > and lumens are untouched. The `yaw()` / `pitch()` calls in `onCoreProcessLogics()` deliberately
 > **kept their positive signs**: with `+Y` up, a positive world yaw is now counter-clockwise seen
@@ -165,7 +207,7 @@ a positive magnitude. The demo renders as it did before the flip.
 ### Post-processing: three layers, only one is a matter of taste
 
 `onCoreStarted()` separates them explicitly, and the `KeySpace` shortcut moves **only the
-third** (see `Application::applyEffectsState()`):
+third** (see `Application::buildPhotographicLooks()` and `applyLook()`):
 
 1. **The sensor — tone mapping.** `camera->enableHDR(true)`. Mandatory, not an effect: the
    renderer produces physical radiance and a screen cannot show it. Without it the raw
@@ -175,7 +217,10 @@ third** (see `Application::applyEffectsState()`):
    threshold is an absolute luminance in **nits**, its intensity the **fraction** of energy
    the glass scatters (a clean lens: a few percent) — not an artistic gain.
 3. **The artistic pass** — god rays (scene chain) + colour grading, vignetting, chromatic
-   aberration, film grain (camera lens effects). The only creative layer.
+   aberration, film grain (camera lens effects). The only creative layer, packaged as three
+   **photographic looks** (`buildPhotographicLooks()` / `applyLook()`): golden hour, silver
+   noir, raw sensor. `KeySpace` cycles them with an on-screen notification and a synthesized
+   chime; tone mapping and bloom never move, so every look stays photographically valid.
 
 > [!NOTE]
 > Do **not** toggle `Renderer::postProcessor().enable()` from an application: it is a global
@@ -185,6 +230,19 @@ third** (see `Application::applyEffectsState()`):
 > Note also that lens effects are compiled **into** the composite shader, so the camera's
 > effect *list* is the program cache key: disabling one means taking it off the camera
 > (`clearLensEffects()`), not clearing a flag.
+
+## Open work — `docs/todo/`, one file per idea
+
+> [!IMPORTANT]
+> **Project-wide rule (all repositories).** Open work lives in `docs/todo/`, **one file per idea
+> to do**; there is no root `TODO.md`. **Done = the file is deleted** — no `[x]`, no "DONE"
+> section, no `done/` archive. The knowledge that must survive the work (measurements, traps,
+> decisions) goes to the documentation, written **before** the item file is deleted.
+> Every item file carries a YAML front-matter: `id` (== file name, kebab-case), `title`,
+> `status` (`open` | `in-progress` | `blocked` | `parked`), `priority`
+> (`high` | `medium` | `low` | `unranked`), `scope`, `opened` (`YYYY-MM-DD` or `unknown`),
+> plus optional `blocked-by` / `tags`. An ambiguous inherited item is **asked about**, never
+> guessed.
 
 ## 5. Conventions
 
