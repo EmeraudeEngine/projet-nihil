@@ -44,7 +44,7 @@
 /* Local inclusions. */
 #include "ApplicationSettingKeys.hpp"
 #include "Audio/SoundResource.hpp"
-#include "Graphics/Effects/Framebuffer/VolumetricLight.hpp"
+#include "Graphics/Effects/Atmosphere/VolumetricLight.hpp"
 #include "Graphics/DirectPostProcessEffect.hpp"
 
 namespace ProjetNihil
@@ -206,7 +206,7 @@ namespace ProjetNihil
 				std::vector< std::shared_ptr< EmEn::Graphics::DirectPostProcessEffect > > lensEffects;
 			};
 
-			std::shared_ptr< EmEn::Graphics::Effects::Framebuffer::VolumetricLight > m_volumetricLight;
+			std::shared_ptr< EmEn::Graphics::Effects::Atmosphere::VolumetricLight > m_volumetricLight;
 			std::shared_ptr< EmEn::Audio::SoundResource > m_lookChime;
 			std::array< PhotographicLook, 3 > m_looks;
 			size_t m_lookIndex{0};

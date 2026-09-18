@@ -44,11 +44,11 @@
 #include "Graphics/Renderable/MeshResource.hpp"
 #include "Scenes/Component/Camera.hpp"
 #include "Scenes/Toolkit.hpp"
-#include "Graphics/Effects/Lens/ChromaticAberration.hpp"
-#include "Graphics/Effects/Lens/ColorGrading.hpp"
-#include "Graphics/Effects/Lens/Vignetting.hpp"
-#include "Graphics/Effects/Lens/FilmGrain.hpp"
-#include "Graphics/Effects/Framebuffer/VolumetricLight.hpp"
+#include "Graphics/Effects/Style/ChromaticAberration.hpp"
+#include "Graphics/Effects/Style/ColorGrading.hpp"
+#include "Graphics/Effects/Style/Vignetting.hpp"
+#include "Graphics/Effects/Style/FilmGrain.hpp"
+#include "Graphics/Effects/Atmosphere/VolumetricLight.hpp"
 #include "Graphics/PostProcessStack.hpp"
 #include "Audio/MusicResource.hpp"
 #include "Audio/SoundResource.hpp"
@@ -269,7 +269,7 @@ namespace ProjetNihil
 			 * budget: the shadow map resolution and how many metres it covers. */
 			TraceInfo{ClassId} << "Using sky-driven lighting ...";
 
-			if ( !newScene->applyBackgroundLighting({.shadowMapResolution = 4096, .shadowCoverage = 100.0F}) )
+			if ( !newScene->applyBackgroundLighting({.shadows = {.shadowMapResolution = 4096, .shadowCoverage = 100.0F}}) )
 			{
 				TraceError{ClassId} << "Unable to derive the lighting from the background!";
 			}
@@ -370,10 +370,7 @@ namespace ProjetNihil
 
 			const auto sceneNode = newScene->root()->createChild("TheCubeNode", Math::CartesianFrame{m_stageCenter});
 
-			sceneNode->componentBuilder< Component::Visual >("TheCube")
-				.setup([] (auto & component) {
-					component.getRenderableInstance()->enableLighting();
-				}).build(cubeResource);
+			sceneNode->componentBuilder< Component::Visual >("TheCube").build(cubeResource, Graphics::RenderableInstance::Lighting::Lit);
 
 			m_cubeNode = sceneNode;
 		}
@@ -536,7 +533,7 @@ namespace ProjetNihil
 
 				auto stack = std::make_unique< PostProcessStack >();
 
-				m_volumetricLight = std::make_shared< Framebuffer::VolumetricLight >(this->graphicsRenderer(), Framebuffer::VolumetricLight::Parameters{
+				m_volumetricLight = std::make_shared< Atmosphere::VolumetricLight >(this->graphicsRenderer(), Atmosphere::VolumetricLight::Parameters{
 					.density = 0.8F,
 					.decay = 0.98F,
 					.exposure = 0.15F,
@@ -718,11 +715,11 @@ namespace ProjetNihil
 			look.name = "Golden hour";
 			look.volumetricLight = true;
 
-			auto chromaticAberration = std::make_shared< Lens::ChromaticAberration >(0.003F);
+			auto chromaticAberration = std::make_shared< Style::ChromaticAberration >(0.003F);
 			chromaticAberration->enableRadial(true);
 			look.lensEffects.emplace_back(std::move(chromaticAberration));
 
-			auto colorGrading = std::make_shared< Lens::ColorGrading >();
+			auto colorGrading = std::make_shared< Style::ColorGrading >();
 			colorGrading->setSaturation(1.15F);
 			colorGrading->setHue(0.06F);
 			colorGrading->setContrast(1.1F);
@@ -730,12 +727,12 @@ namespace ProjetNihil
 			colorGrading->setGamma(1.05F);
 			look.lensEffects.emplace_back(std::move(colorGrading));
 
-			auto vignetting = std::make_shared< Lens::Vignetting >(0.4F);
+			auto vignetting = std::make_shared< Style::Vignetting >(0.4F);
 			vignetting->setRadius(0.45F);
 			vignetting->setSoftness(0.55F);
 			look.lensEffects.emplace_back(std::move(vignetting));
 
-			auto filmGrain = std::make_shared< Lens::FilmGrain >(0.05F);
+			auto filmGrain = std::make_shared< Style::FilmGrain >(0.05F);
 			filmGrain->setSize(1.0F);
 			look.lensEffects.emplace_back(std::move(filmGrain));
 		}
@@ -746,18 +743,18 @@ namespace ProjetNihil
 			look.name = "Silver noir";
 			look.volumetricLight = false;
 
-			auto colorGrading = std::make_shared< Lens::ColorGrading >();
+			auto colorGrading = std::make_shared< Style::ColorGrading >();
 			colorGrading->setSaturation(0.10F);
 			colorGrading->setContrast(1.4F);
 			colorGrading->setGamma(0.95F);
 			look.lensEffects.emplace_back(std::move(colorGrading));
 
-			auto vignetting = std::make_shared< Lens::Vignetting >(0.65F);
+			auto vignetting = std::make_shared< Style::Vignetting >(0.65F);
 			vignetting->setRadius(0.4F);
 			vignetting->setSoftness(0.5F);
 			look.lensEffects.emplace_back(std::move(vignetting));
 
-			auto filmGrain = std::make_shared< Lens::FilmGrain >(0.12F);
+			auto filmGrain = std::make_shared< Style::FilmGrain >(0.12F);
 			filmGrain->setSize(1.3F);
 			look.lensEffects.emplace_back(std::move(filmGrain));
 		}
