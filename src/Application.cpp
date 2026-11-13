@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <numbers>
 
 /* Local inclusions. */
@@ -493,7 +494,7 @@ namespace ProjetNihil
 			m_lookChime = resources.container< Audio::SoundResource >()
 				->getOrCreateResource("LookChime", [this] (Audio::SoundResource & soundResource) {
 					const auto frequency = this->audioManager().frequencyPlayback();
-					const auto noteLength = static_cast< size_t >(frequency) / 14; /* ~70 ms per note. */
+					const auto noteLength = static_cast< size_t >(frequency.hz() / 14); /* ~70 ms per note. */
 
 					WaveFactory::Synthesizer synth{soundResource.localData(), noteLength * 2, frequency};
 
@@ -636,7 +637,7 @@ namespace ProjetNihil
 				}
 			}};
 
-			auto applySphereY = [&time] (const std::weak_ptr< StaticEntity > & weakSphere, const BobParams & params, float baseY) {
+			const auto applySphereY = [&time] (const std::weak_ptr< StaticEntity > & weakSphere, const BobParams & params, float baseY) {
 				if ( const auto sphere = weakSphere.lock() )
 				{
 					const auto y = baseY - (params.amplitude * std::sin((2.0F * std::numbers::pi_v< float > * time / params.period) + params.phaseOffset));
